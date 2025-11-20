@@ -2,6 +2,9 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/n8n_mcp"]
+
 [project]
 name = "n8n-mcp-server"
 version = "0.1.0"
