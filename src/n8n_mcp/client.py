@@ -5,19 +5,21 @@ Version: 0.1.0
 Created: 2025-11-20
 """
 
+from typing import Any
+
 import httpx
-from typing import Optional, Dict, Any
 
 
 class N8nClient:
     """Async HTTP client for n8n REST API."""
 
-    def __init__(self, base_url: str, api_key: str):
+    def __init__(self, base_url: str, api_key: str, verify_ssl: bool = False):
         """Initialize the n8n API client.
 
         Args:
-            base_url: Base URL of the n8n instance (e.g., https://n8n-backend.homelab.com)
+            base_url: Base URL of the n8n instance (e.g., https://n8n.homelab.com)
             api_key: API key for authentication
+            verify_ssl: Whether to verify SSL certificates (default: False for homelab)
         """
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -25,6 +27,7 @@ class N8nClient:
             base_url=self.base_url,
             headers={"X-N8N-API-KEY": self.api_key},
             timeout=30.0,
+            verify=verify_ssl,
         )
 
     async def __aenter__(self):
@@ -39,10 +42,12 @@ class N8nClient:
         """Close the HTTP client."""
         await self.client.aclose()
 
-    async def _request(
-        self, method: str, endpoint: str, **kwargs
-    ) -> Dict[str, Any]:
+    async def _request(self, method: str, endpoint: str, **kwargs) -> dict[str, Any]:
         """Common request handler with error handling.
+
+        This method catches all exceptions and returns error dictionaries
+        instead of raising exceptions, making responses consistent and
+        MCP-friendly.
 
         Args:
             method: HTTP method (GET, POST, PATCH, etc.)
@@ -50,11 +55,8 @@ class N8nClient:
             **kwargs: Additional arguments to pass to httpx
 
         Returns:
-            JSON response as dict
-
-        Raises:
-            httpx.HTTPError: On HTTP errors
-            httpx.RequestError: On network errors
+            JSON response dict on success, or error dict with 'error' key on failure.
+            Error dict format: {"error": "error_type", "message": "details", ...}
         """
         try:
             response = await self.client.request(method, endpoint, **kwargs)
@@ -71,7 +73,7 @@ class N8nClient:
         except Exception as e:
             return {"error": "Unknown error", "message": str(e)}
 
-    async def list_workflows(self) -> Dict[str, Any]:
+    async def list_workflows(self) -> dict[str, Any]:
         """Get all workflows from n8n.
 
         Returns:
@@ -79,7 +81,7 @@ class N8nClient:
         """
         return await self._request("GET", "/api/v1/workflows")
 
-    async def get_workflow(self, workflow_id: str) -> Dict[str, Any]:
+    async def get_workflow(self, workflow_id: str) -> dict[str, Any]:
         """Get specific workflow by ID.
 
         Args:
@@ -91,8 +93,8 @@ class N8nClient:
         return await self._request("GET", f"/api/v1/workflows/{workflow_id}")
 
     async def execute_workflow(
-        self, workflow_id: str, data: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+        self, workflow_id: str, data: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Trigger workflow execution.
 
         Args:
@@ -108,8 +110,8 @@ class N8nClient:
         )
 
     async def get_executions(
-        self, workflow_id: Optional[str] = None, limit: int = 20
-    ) -> Dict[str, Any]:
+        self, workflow_id: str | None = None, limit: int = 20
+    ) -> dict[str, Any]:
         """List workflow execution history.
 
         Args:
@@ -124,7 +126,7 @@ class N8nClient:
             params["workflowId"] = workflow_id
         return await self._request("GET", "/api/v1/executions", params=params)
 
-    async def get_execution(self, execution_id: str) -> Dict[str, Any]:
+    async def get_execution(self, execution_id: str) -> dict[str, Any]:
         """Get specific execution details by ID.
 
         Args:
@@ -135,9 +137,7 @@ class N8nClient:
         """
         return await self._request("GET", f"/api/v1/executions/{execution_id}")
 
-    async def activate_workflow(
-        self, workflow_id: str, active: bool
-    ) -> Dict[str, Any]:
+    async def activate_workflow(self, workflow_id: str, active: bool) -> dict[str, Any]:
         """Activate or deactivate a workflow.
 
         Args:
@@ -150,3 +150,61 @@ class N8nClient:
         return await self._request(
             "PATCH", f"/api/v1/workflows/{workflow_id}", json={"active": active}
         )
+
+    async def create_workflow(self, workflow_data: dict[str, Any]) -> dict[str, Any]:
+        """Create a new workflow.
+
+        Args:
+            workflow_data: Workflow definition dictionary with required fields:
+                - name (str): Workflow name
+                - nodes (list): List of workflow nodes
+                - connections (dict): Node connections
+                - settings (dict, optional): Workflow settings
+                - active (bool, optional): Whether to activate immediately
+
+        Returns:
+            Response data with created workflow details including ID
+
+        Example workflow_data:
+            {
+                "name": "My Workflow",
+                "nodes": [
+                    {
+                        "id": "node-1",
+                        "name": "Start",
+                        "type": "n8n-nodes-base.start",
+                        "typeVersion": 1,
+                        "position": [250, 300]
+                    }
+                ],
+                "connections": {},
+                "active": false,
+                "settings": {}
+            }
+        """
+        return await self._request("POST", "/api/v1/workflows", json=workflow_data)
+
+    async def update_workflow(
+        self, workflow_id: str, workflow_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Update an existing workflow.
+
+        Args:
+            workflow_id: The workflow ID to update
+            workflow_data: Partial or complete workflow definition to update
+
+        Returns:
+            Response data with updated workflow details
+        """
+        return await self._request("PUT", f"/api/v1/workflows/{workflow_id}", json=workflow_data)
+
+    async def delete_workflow(self, workflow_id: str) -> dict[str, Any]:
+        """Delete a workflow.
+
+        Args:
+            workflow_id: The workflow ID to delete
+
+        Returns:
+            Response data confirming deletion
+        """
+        return await self._request("DELETE", f"/api/v1/workflows/{workflow_id}")
