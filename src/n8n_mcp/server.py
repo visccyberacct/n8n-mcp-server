@@ -196,5 +196,10 @@ async def delete_workflow(workflow_id: str) -> dict[str, Any]:
     return await client.delete_workflow(workflow_id)
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Entry point for the n8n MCP server."""
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()
