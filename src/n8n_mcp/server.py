@@ -7,12 +7,19 @@ Created: 2025-11-20
 
 import json
 import os
+from pathlib import Path
 from typing import Any
 
+from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
 from .client import N8nClient
 from .utils import handle_errors
+
+# Load environment variables from .env file in the plugin's directory
+# This ensures .env works when running as an installed plugin
+_plugin_dir = Path(__file__).resolve().parent.parent.parent
+load_dotenv(_plugin_dir / ".env")
 
 # Initialize FastMCP server
 mcp = FastMCP("n8n-api")
