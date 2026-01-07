@@ -25,9 +25,34 @@ n8n-mcp-server is an MCP (Model Context Protocol) server providing 9 tools to in
 **Workflow:**
 1. Create/modify files in THIS directory (development)
 2. Test and validate changes here
-3. Copy to staging directory for deployment (manual or via build process)
+3. Deploy to staging: Use `/deploy-plugin` command to sync files and version to marketplace
 
 ## Development Commands
+
+### Plugin Deployment
+```bash
+# Deploy to marketplace (syncs files + version)
+/deploy-plugin
+```
+This command:
+- Reads current version from pyproject.toml (managed by git hook)
+- Copies `src/`, `skills/`, `pyproject.toml`, `README.md`, `.env.example` to marketplace
+- Updates marketplace plugin.json with version from development
+- Validates deployment
+- **Commits and pushes** marketplace changes
+- **Creates PR and auto-merges** to marketplace main
+- Reports what changed
+
+**Version Management:**
+Versions are managed by global git pre-push hook based on Conventional Commits:
+- `feat:` → MINOR bump (0.1.2 → 0.2.0)
+- `fix:` / `chore:` → PATCH bump (0.1.2 → 0.1.3)
+- `BREAKING CHANGE:` → MAJOR bump (0.1.2 → 1.0.0)
+
+**Workflow:**
+1. Make changes and commit with Conventional Commits
+2. Run `git push` (hook auto-bumps version)
+3. Run `/deploy-plugin` (syncs to marketplace)
 
 ### Testing
 ```bash
