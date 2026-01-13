@@ -30,7 +30,7 @@ def handle_errors(func: F) -> F:
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> dict[str, Any]:
         try:
-            return await func(*args, **kwargs)
+            return await func(*args, **kwargs)  # type: ignore[no-any-return]
         except json.JSONDecodeError as e:
             return {"error": "Invalid JSON", "message": str(e)}
         except Exception as e:

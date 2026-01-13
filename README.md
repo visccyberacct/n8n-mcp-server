@@ -201,7 +201,7 @@ A pre-built workflow for automating system updates on Ubuntu and Debian servers 
 
 **Workflow ID**: `Ikau3rRnpRG1okvq`
 
-See [N8N_SERVER_UPDATE_WORKFLOW.md](./N8N_SERVER_UPDATE_WORKFLOW.md) for:
+See [N8N_SERVER_UPDATE_WORKFLOW.md](./docs/N8N_SERVER_UPDATE_WORKFLOW.md) for:
 - Complete configuration guide
 - SSH setup instructions
 - Security best practices
@@ -228,9 +228,10 @@ n8n-mcp-server/
 │   └── test_server.py    # Comprehensive test suite
 ├── pyproject.toml        # Project dependencies
 ├── README.md             # This file
-├── .env.example          # Example configuration
-├── N8N_API_WORKFLOW_CREATION_REPORT.md  # Detailed API research
-└── N8N_SERVER_UPDATE_WORKFLOW.md        # Server update workflow guide
+├── docs/
+│   ├── N8N_API_WORKFLOW_CREATION_REPORT.md  # Detailed API research
+│   └── N8N_SERVER_UPDATE_WORKFLOW.md        # Server update workflow guide
+└── .env.example          # Example configuration
 ```
 
 ## License
