@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 
 
-class N8nClient:
+class N8nClient:  # pylint: disable=too-many-public-methods
     """Async HTTP client for n8n REST API."""
 
     def __init__(self, base_url: str, api_key: str, verify_ssl: bool = False):
@@ -70,7 +70,7 @@ class N8nClient:
             }
         except httpx.RequestError as e:
             return {"error": "Network error", "message": str(e)}
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             return {"error": "Unknown error", "message": str(e)}
 
     async def list_workflows(self) -> dict[str, Any]:
