@@ -251,9 +251,30 @@ See `docs/N8N_API_WORKFLOW_CREATION_REPORT.md` for detailed API research.
 
 ## CI/CD Pipeline
 
-The project includes a comprehensive Jenkins pipeline (`Jenkinsfile`) that runs in a Docker container (Ubuntu 24.04):
+The project uses a **Jenkins Multibranch Pipeline** (`Jenkinsfile`) that runs in a Docker container (Ubuntu 24.04).
 
-**Quality Gates** (all must pass for build to succeed):
+### Multibranch Pipeline Configuration
+
+**Jenkins Job**: `n8n-plugin` (https://jenkins.homelab.com/job/n8n-plugin/)
+
+**How it works**:
+- Automatically detects branches in the Git repository
+- Creates separate pipeline jobs for each branch
+- Scans for new branches periodically (or on webhook trigger)
+- Builds feature branches, main branch, and PRs independently
+
+**Branch Workflow**:
+1. Create feature branch: `git switch -c feature/my-feature`
+2. Commit and push: `git push -u origin feature/my-feature`
+3. Jenkins auto-detects the new branch (may take 10-30 seconds)
+4. Pipeline runs automatically for the feature branch
+5. Monitor build status using Jenkins MCP tools
+
+**IMPORTANT**: When pushing a new branch, give Jenkins time to scan and detect it before attempting to trigger builds manually. The multibranch pipeline will automatically start a build once the branch is discovered.
+
+### Quality Gates
+
+All stages must pass for build to succeed:
 - **Code formatting**: Black (line-length: 100)
 - **Linting**: Ruff (0 critical errors allowed)
 - **Type checking**: mypy (strict mode)
@@ -262,7 +283,8 @@ The project includes a comprehensive Jenkins pipeline (`Jenkinsfile`) that runs 
 - **SBOM**: CycloneDX SBOM generation and upload to Dependency-Track
 - **SonarCloud**: Code quality analysis with quality gate enforcement
 
-**Pipeline Stages**:
+### Pipeline Stages
+
 1. **Setup Environment** - Install Python 3.11, uv, and system dependencies
 2. **Install Dependencies** - Use uv to install project and dev dependencies
 3. **Code Quality Checks** - Black, Ruff, mypy (all must pass)
@@ -272,16 +294,47 @@ The project includes a comprehensive Jenkins pipeline (`Jenkinsfile`) that runs 
 7. **Upload to Dependency-Track** - SBOM upload for dependency monitoring
 8. **SonarCloud Analysis** - Code quality scan and quality gate check
 
-**Running Locally** (simulating CI):
+### Monitoring Builds with Jenkins MCP
+
+```python
+# List all jobs (including branch pipelines)
+list_jobs = mcp__plugin_jenkins-ci_jenkins__jenkins_list_jobs({
+    "folder": null,
+    "limit": 50,
+    "response_format": "markdown"
+})
+
+# Get specific job info
+job_info = mcp__plugin_jenkins-ci_jenkins__jenkins_get_job_info({
+    "job_name": "n8n-plugin",
+    "response_format": "markdown"
+})
+
+# Get build queue status
+queue = mcp__plugin_jenkins-ci_jenkins__jenkins_get_queue_info({
+    "response_format": "markdown"
+})
+
+# Get build console output
+console = mcp__plugin_jenkins-ci_jenkins__jenkins_get_build_console({
+    "job_name": "n8n-plugin/feature/my-feature",
+    "build_number": 1,
+    "response_format": "text"
+})
+```
+
+### Running Locally (Simulating CI)
+
 ```bash
-# Full quality check sequence
+# Full quality check sequence (same as Jenkins)
 black src tests && \
 ruff check src tests && \
 mypy src && \
 pytest --cov=n8n_mcp --cov-report=xml --cov-report=term-missing
 ```
 
-**Environment Variables Required** (Jenkins credentials):
+### Environment Variables Required (Jenkins Credentials)
+
 - `SONARCLOUD_TOKEN` - SonarCloud authentication
-- `DEPENDENCY_TRACK_URL` - Dependency-Track server URL
+- `DEPENDENCY_TRACK_URL` - Dependency-Track server URL (https://dtrack.homelab.com/api)
 - `DEPENDENCY_TRACK_API_KEY` - Dependency-Track API key
