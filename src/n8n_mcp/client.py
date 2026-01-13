@@ -299,6 +299,15 @@ class N8nClient:
 
     # Credential Management
 
+    async def list_credentials(self) -> dict[str, Any]:
+        """List all credentials from n8n.
+
+        Returns:
+            Response data with list of credentials (id, name, type).
+            Credential data is redacted for security.
+        """
+        return await self._request("GET", "/api/v1/credentials")
+
     async def create_credential(self, credential_data: dict[str, Any]) -> dict[str, Any]:
         """Create a new credential.
 

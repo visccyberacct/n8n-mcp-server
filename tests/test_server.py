@@ -333,6 +333,30 @@ async def test_retry_execution():
 
 
 @pytest.mark.asyncio
+async def test_list_credentials():
+    """Test listing credentials."""
+    with patch("httpx.AsyncClient.request") as mock_request:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"id": "cred_123", "name": "GitHub API", "type": "githubApi"},
+                {"id": "cred_456", "name": "SSH Password", "type": "sshPassword"},
+            ]
+        }
+        mock_request.return_value = mock_response
+
+        client = N8nClient(base_url="https://n8n-backend.homelab.com", api_key="test_key")
+        result = await client.list_credentials()
+
+        assert "data" in result
+        assert len(result["data"]) == 2
+        assert result["data"][0]["id"] == "cred_123"
+        assert result["data"][1]["type"] == "sshPassword"
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_create_credential():
     """Test creating a credential."""
     with patch("httpx.AsyncClient.request") as mock_request:
@@ -777,6 +801,24 @@ async def test_mcp_retry_execution():
         result = await server.retry_execution("exec_123")
         assert result == {"id": "exec_retry"}
         mock_method.assert_called_once_with("exec_123")
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_credentials():
+    """Test list_credentials MCP tool."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "list_credentials") as mock_method:
+        mock_method.return_value = {
+            "data": [
+                {"id": "cred_123", "name": "GitHub", "type": "githubApi"},
+                {"id": "cred_456", "name": "SSH", "type": "sshPassword"},
+            ]
+        }
+        result = await server.list_credentials()
+        assert result == mock_method.return_value
+        assert len(result["data"]) == 2
+        mock_method.assert_called_once()
 
 
 @pytest.mark.asyncio

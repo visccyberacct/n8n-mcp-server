@@ -131,37 +131,63 @@ async def activate_workflow(workflow_id: str, active: bool) -> dict[str, Any]:
 async def create_workflow(workflow_data: str) -> dict[str, Any]:
     """Create a new workflow in n8n.
 
+    ⚠️ IMPORTANT - Forbidden Fields:
+    DO NOT include these fields (will cause 400 error):
+    - active, description, id, versionId, createdAt, updatedAt
+    - staticData, meta, pinData, triggerCount, versionCounter
+
+    Use activate_workflow tool to activate after creation.
+
+    Required Fields:
+    - name (str): Workflow name
+    - nodes (list): List of workflow nodes
+    - connections (dict): Node connections
+
+    Node Required Fields (each node in nodes array):
+    - id (str): Unique node identifier
+    - name (str): Node display name
+    - type (str): Node type (e.g., "n8n-nodes-base.start")
+    - typeVersion (int): Node type version
+    - position (list): [x, y] coordinates
+
+    Optional Fields:
+    - settings (dict): Workflow settings (recommended: {"executionOrder": "v1"})
+    - tags (list): Tag IDs to assign to workflow
+
     Args:
-        workflow_data: JSON string containing workflow definition with required fields:
-            - name (str): Workflow name
-            - nodes (list): List of workflow nodes, each with:
-                - id (str): Unique node identifier
-                - name (str): Node display name
-                - type (str): Node type (e.g., "n8n-nodes-base.start")
-                - typeVersion (int): Node type version
-                - position (list): [x, y] coordinates
-            - connections (dict): Node connections (use {} for single-node workflows)
-            - settings (dict, optional): Workflow settings
-            - active (bool, optional): Whether to activate immediately (default: false)
+        workflow_data: JSON string containing workflow definition
 
     Returns:
         Dictionary containing created workflow details including ID
 
+    Common Errors:
+    - 'must NOT have additional properties' → Remove forbidden fields above
+    - 'missing required property settings' → Add {"settings": {"executionOrder": "v1"}}
+    - 'credentials by name may be unreliable' → Use credential IDs from list_credentials
+
     Example workflow_data:
         {
             "name": "My Workflow",
+            "settings": {
+                "executionOrder": "v1"
+            },
             "nodes": [
                 {
                     "id": "node-1",
                     "name": "Start",
                     "type": "n8n-nodes-base.start",
                     "typeVersion": 1,
-                    "position": [250, 300]
+                    "position": [250, 300],
+                    "parameters": {}
                 }
             ],
-            "connections": {},
-            "active": false
+            "connections": {}
         }
+
+    Documentation:
+    - Field reference: docs/WORKFLOW_FIELD_REFERENCE.md
+    - Connection types: docs/CONNECTION_TYPES.md
+    - Credential types: docs/CREDENTIAL_TYPES.md
     """
     workflow_dict = json.loads(workflow_data)
     return await client.create_workflow(workflow_dict)
@@ -172,18 +198,40 @@ async def create_workflow(workflow_data: str) -> dict[str, Any]:
 async def update_workflow(workflow_id: str, workflow_data: str) -> dict[str, Any]:
     """Update an existing workflow in n8n.
 
+    ⚠️ ⚠️ ⚠️ CRITICAL WARNING ⚠️ ⚠️ ⚠️
+
+    This endpoint has KNOWN ISSUES with n8n API v1 that make it nearly unusable:
+    - Rejects workflows with fields returned by get_workflow
+    - Error messages don't specify which field is problematic
+    - No combination of fields reliably succeeds
+
+    STRONGLY RECOMMENDED WORKAROUND - Delete and Recreate:
+    1. old_wf = get_workflow(workflow_id)
+    2. delete_workflow(workflow_id)
+    3. new_wf = create_workflow(modified_workflow_json)
+    4. If was active: activate_workflow(new_wf["id"], True)
+
+    Consequences of workaround:
+    - ✅ Works reliably
+    - ❌ Loses execution history
+    - ❌ Workflow ID changes (update any references)
+    - ❌ Tags are lost (must reapply)
+
+    If you must try updating (expect 400 errors):
+    - Use ONLY: name, nodes, connections, settings
+    - DO NOT include: active, id, description, versionId, createdAt, updatedAt
+    - DO NOT include: staticData, meta, pinData, triggerCount, versionCounter
+
     Args:
         workflow_id: The ID of the workflow to update
-        workflow_data: JSON string with workflow fields to update (partial or complete)
+        workflow_data: JSON string with minimal workflow fields (expect failures)
 
     Returns:
-        Dictionary containing updated workflow details
+        Dictionary containing updated workflow details (if successful, which is unlikely)
 
-    Example workflow_data:
-        {
-            "name": "Updated Workflow Name",
-            "active": true
-        }
+    Documentation:
+    - Full details: docs/KNOWN_LIMITATIONS.md#1-workflow-update-api-is-broken
+    - Field reference: docs/WORKFLOW_FIELD_REFERENCE.md
     """
     workflow_dict = json.loads(workflow_data)
     return await client.update_workflow(workflow_id, workflow_dict)
@@ -303,6 +351,32 @@ async def retry_execution(execution_id: str) -> dict[str, Any]:
         Dictionary containing new execution details from retry
     """
     return await client.retry_execution(execution_id)
+
+
+@mcp.tool()
+@handle_errors
+async def list_credentials() -> dict[str, Any]:
+    """List all credentials from n8n.
+
+    Returns:
+        Dictionary containing credentials list with id, name, and type for each credential.
+        Credential data is redacted for security.
+
+    Example response:
+        {
+            "data": [
+                {
+                    "id": "cred_123",
+                    "name": "GitHub API Token",
+                    "type": "githubApi"
+                }
+            ]
+        }
+
+    Note: Use this to discover existing credential IDs. When creating workflows,
+    always reference credentials by ID (not name) to ensure correct credential is used.
+    """
+    return await client.list_credentials()
 
 
 @mcp.tool()
