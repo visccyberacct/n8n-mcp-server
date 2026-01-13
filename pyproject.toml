@@ -7,7 +7,7 @@ packages = ["src/n8n_mcp"]
 
 [project]
 name = "n8n-mcp-server"
-version = "0.3.0"
+version = "0.3.1"
 description = "MCP server providing tools to interact with n8n workflow automation platform"
 readme = "README.md"
 requires-python = ">=3.11"
