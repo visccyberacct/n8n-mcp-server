@@ -64,6 +64,9 @@ pytest --cov=n8n_mcp --cov-report=term-missing
 
 # Run specific test file
 pytest tests/test_server.py -v
+
+# Run tests with XML coverage (for SonarCloud)
+pytest --cov=n8n_mcp --cov-report=xml
 ```
 
 ### Code Quality (run before committing)
@@ -103,6 +106,17 @@ claude mcp add n8n-api \
   python -m n8n_mcp.server
 ```
 
+### Configuration Command
+```bash
+# Configure n8n MCP server credentials (after plugin is installed)
+/n8n-setup
+```
+This interactive command:
+- Prompts for N8N_BASE_URL and N8N_API_KEY
+- Creates/updates `.env` file in the plugin directory
+- Validates the credentials by testing connection to n8n
+- Provides clear error messages if validation fails
+
 ## Architecture
 
 ### Core Components
@@ -110,7 +124,7 @@ claude mcp add n8n-api \
 **src/n8n_mcp/server.py** - FastMCP server entry point
 - Defines 9 MCP tools decorated with `@mcp.tool()` and `@handle_errors`
 - Loads `.env` from plugin directory (not cwd) to support installed plugin usage
-- Module-level `N8nClient` instance for efficiency
+- Module-level `N8nClient` instance for efficiency (shared across all tool calls)
 - Tools: list_workflows, get_workflow, create_workflow, update_workflow, delete_workflow, activate_workflow, execute_workflow, get_executions, get_execution
 
 **src/n8n_mcp/client.py** - N8nClient class
@@ -118,8 +132,19 @@ claude mcp add n8n-api \
 - Methods mirror the 9 MCP tools
 - SSL verification disabled (`verify_ssl=False`) for homelab environments
 - Proper cleanup in `__aexit__` and `close()`
+- Internal `_request()` method handles all HTTP errors and returns consistent error dicts
+
+**src/n8n_mcp/utils.py** - Shared utilities
+- `@handle_errors` decorator for consistent error handling across all MCP tools
+- Catches JSON decode errors and general exceptions
+- Returns error dicts in MCP-compatible format
 
 **Architecture Pattern**: FastMCP tools → N8nClient methods → httpx HTTP calls → n8n API
+
+**Key Design Decisions**:
+- **Module-level client**: Single `N8nClient` instance shared across all tool invocations prevents connection overhead
+- **Two-layer error handling**: Client `_request()` catches HTTP/network errors, `@handle_errors` decorator catches tool-level errors
+- **Plugin-directory .env loading**: Ensures environment variables load correctly when installed as plugin vs development use
 
 ### Environment Variables
 - `N8N_BASE_URL`: n8n instance URL (default: https://n8n.homelab.com)
@@ -222,4 +247,41 @@ Compatible with n8n REST API v1. Supported endpoints:
 - POST `/api/v1/workflows/{id}/execute`
 - GET `/api/v1/executions`
 
-See `N8N_API_WORKFLOW_CREATION_REPORT.md` for detailed API research.
+See `docs/N8N_API_WORKFLOW_CREATION_REPORT.md` for detailed API research.
+
+## CI/CD Pipeline
+
+The project includes a comprehensive Jenkins pipeline (`Jenkinsfile`) that runs in a Docker container (Ubuntu 24.04):
+
+**Quality Gates** (all must pass for build to succeed):
+- **Code formatting**: Black (line-length: 100)
+- **Linting**: Ruff (0 critical errors allowed)
+- **Type checking**: mypy (strict mode)
+- **Testing**: pytest with 80% minimum coverage requirement
+- **Security**: pip-audit (no critical/high vulnerabilities)
+- **SBOM**: CycloneDX SBOM generation and upload to Dependency-Track
+- **SonarCloud**: Code quality analysis with quality gate enforcement
+
+**Pipeline Stages**:
+1. **Setup Environment** - Install Python 3.11, uv, and system dependencies
+2. **Install Dependencies** - Use uv to install project and dev dependencies
+3. **Code Quality Checks** - Black, Ruff, mypy (all must pass)
+4. **Security Scan** - pip-audit for vulnerability detection
+5. **Run Tests** - pytest with coverage reporting (XML for SonarCloud)
+6. **Generate SBOM** - CycloneDX BOM file creation
+7. **Upload to Dependency-Track** - SBOM upload for dependency monitoring
+8. **SonarCloud Analysis** - Code quality scan and quality gate check
+
+**Running Locally** (simulating CI):
+```bash
+# Full quality check sequence
+black src tests && \
+ruff check src tests && \
+mypy src && \
+pytest --cov=n8n_mcp --cov-report=xml --cov-report=term-missing
+```
+
+**Environment Variables Required** (Jenkins credentials):
+- `SONARCLOUD_TOKEN` - SonarCloud authentication
+- `DEPENDENCY_TRACK_URL` - Dependency-Track server URL
+- `DEPENDENCY_TRACK_API_KEY` - Dependency-Track API key
