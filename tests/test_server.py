@@ -1493,3 +1493,313 @@ async def test_mcp_validate_workflow_with_errors():
     assert result["valid"] is False
     assert result["error_count"] > 0
     assert any("active" in e for e in result["errors"])
+
+
+# ============================================================================
+# Workflow Health Check Tests
+# Tests for get_workflow_health tool
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_workflow_health_healthy():
+    """Test get_workflow_health with healthy workflow (>95% success rate)."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "get_workflow") as mock_workflow:
+        with patch.object(server.client, "get_executions") as mock_executions:
+            mock_workflow.return_value = {"id": "wf_1", "name": "Healthy Workflow", "active": True}
+            mock_executions.return_value = {
+                "data": [
+                    {
+                        "id": "e1",
+                        "finished": True,
+                        "status": "success",
+                        "startedAt": "2026-01-01T00:00:00Z",
+                        "stoppedAt": "2026-01-01T00:00:10Z",
+                    },
+                    {
+                        "id": "e2",
+                        "finished": True,
+                        "status": "success",
+                        "startedAt": "2026-01-01T00:01:00Z",
+                        "stoppedAt": "2026-01-01T00:01:05Z",
+                    },
+                    {
+                        "id": "e3",
+                        "finished": True,
+                        "status": "success",
+                        "startedAt": "2026-01-01T00:02:00Z",
+                        "stoppedAt": "2026-01-01T00:02:08Z",
+                    },
+                ]
+            }
+
+            result = await server.get_workflow_health("wf_1")
+
+            assert result["health_status"] == "healthy"
+            assert result["success_rate"] == 100.0
+            assert result["total_executions"] == 3
+            assert result["successful_executions"] == 3
+            assert result["failed_executions"] == 0
+            assert result["workflow_name"] == "Healthy Workflow"
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_workflow_health_degraded():
+    """Test get_workflow_health with degraded workflow (80-95% success rate)."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "get_workflow") as mock_workflow:
+        with patch.object(server.client, "get_executions") as mock_executions:
+            mock_workflow.return_value = {"id": "wf_2", "name": "Degraded Workflow", "active": True}
+            # 9 success, 1 failed = 90% success rate
+            executions = [
+                {
+                    "id": f"e{i}",
+                    "finished": True,
+                    "status": "success",
+                    "startedAt": "2026-01-01T00:00:00Z",
+                    "stoppedAt": "2026-01-01T00:00:05Z",
+                }
+                for i in range(9)
+            ]
+            executions.append(
+                {
+                    "id": "e9",
+                    "finished": True,
+                    "status": "error",
+                    "stoppedAt": "2026-01-01T00:01:00Z",
+                }
+            )
+            mock_executions.return_value = {"data": executions}
+
+            result = await server.get_workflow_health("wf_2")
+
+            assert result["health_status"] == "degraded"
+            assert result["success_rate"] == 90.0
+            assert result["failed_executions"] == 1
+            assert len(result["issues"]) > 0
+            assert len(result["recommendations"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_workflow_health_unhealthy():
+    """Test get_workflow_health with unhealthy workflow (<80% success rate)."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "get_workflow") as mock_workflow:
+        with patch.object(server.client, "get_executions") as mock_executions:
+            mock_workflow.return_value = {
+                "id": "wf_3",
+                "name": "Unhealthy Workflow",
+                "active": True,
+            }
+            # 3 success, 7 failed = 30% success rate
+            executions = [
+                {
+                    "id": f"e{i}",
+                    "finished": True,
+                    "status": "success",
+                    "startedAt": "2026-01-01T00:00:00Z",
+                    "stoppedAt": "2026-01-01T00:00:05Z",
+                }
+                for i in range(3)
+            ]
+            for i in range(7):
+                executions.append(
+                    {
+                        "id": f"f{i}",
+                        "finished": True,
+                        "status": "error",
+                        "stoppedAt": "2026-01-01T00:01:00Z",
+                    }
+                )
+            mock_executions.return_value = {"data": executions}
+
+            result = await server.get_workflow_health("wf_3")
+
+            assert result["health_status"] == "unhealthy"
+            assert result["success_rate"] == 30.0
+            assert result["failed_executions"] == 7
+            assert "High failure rate" in result["issues"][0]
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_workflow_health_no_history():
+    """Test get_workflow_health with no execution history."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "get_workflow") as mock_workflow:
+        with patch.object(server.client, "get_executions") as mock_executions:
+            mock_workflow.return_value = {"id": "wf_4", "name": "New Workflow", "active": False}
+            mock_executions.return_value = {"data": []}
+
+            result = await server.get_workflow_health("wf_4")
+
+            assert result["health_status"] == "unknown"
+            assert result["success_rate"] is None
+            assert result["total_executions"] == 0
+            assert "No execution history" in result["issues"][0]
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_workflow_health_inactive_workflow():
+    """Test get_workflow_health flags inactive workflow."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "get_workflow") as mock_workflow:
+        with patch.object(server.client, "get_executions") as mock_executions:
+            mock_workflow.return_value = {"id": "wf_5", "name": "Inactive", "active": False}
+            mock_executions.return_value = {
+                "data": [
+                    {
+                        "id": "e1",
+                        "finished": True,
+                        "status": "success",
+                        "startedAt": "2026-01-01T00:00:00Z",
+                        "stoppedAt": "2026-01-01T00:00:05Z",
+                    },
+                ]
+            }
+
+            result = await server.get_workflow_health("wf_5")
+
+            assert result["health_status"] == "healthy"
+            assert "Workflow is currently inactive" in result["issues"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_get_workflow_health_error_passthrough():
+    """Test get_workflow_health passes through API errors."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "get_workflow") as mock_workflow:
+        mock_workflow.return_value = {"error": "HTTP 404", "message": "Not found"}
+
+        result = await server.get_workflow_health("wf_999")
+
+        assert "error" in result
+        assert result["error"] == "HTTP 404"
+
+
+# ============================================================================
+# Workflow Cloning Tests
+# Tests for clone_workflow tool
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_mcp_clone_workflow_success():
+    """Test clone_workflow creates new workflow with cleaned fields."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "get_workflow") as mock_get:
+        with patch.object(server.client, "create_workflow") as mock_create:
+            mock_get.return_value = {
+                "id": "original_id",
+                "name": "Original Workflow",
+                "active": True,
+                "nodes": [
+                    {"id": "n1", "name": "Start", "type": "t", "typeVersion": 1, "position": [0, 0]}
+                ],
+                "connections": {},
+                "settings": {"executionOrder": "v1"},
+                "versionId": "v123",
+                "createdAt": "2026-01-01T00:00:00Z",
+            }
+            mock_create.return_value = {"id": "new_id", "name": "Cloned Workflow"}
+
+            result = await server.clone_workflow("original_id", "Cloned Workflow")
+
+            assert "cloned_workflow" in result
+            assert result["cloned_workflow"]["id"] == "new_id"
+            assert result["source_workflow_id"] == "original_id"
+            assert "id" in result["fields_removed"]
+            assert "active" in result["fields_removed"]
+            assert "versionId" in result["fields_removed"]
+
+            # Verify create_workflow was called with clean data
+            call_args = mock_create.call_args[0][0]
+            assert call_args["name"] == "Cloned Workflow"
+            assert "id" not in call_args
+            assert "active" not in call_args
+
+
+@pytest.mark.asyncio
+async def test_mcp_clone_workflow_with_activation():
+    """Test clone_workflow with activation flag."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "get_workflow") as mock_get:
+        with patch.object(server.client, "create_workflow") as mock_create:
+            with patch.object(server.client, "activate_workflow") as mock_activate:
+                mock_get.return_value = {
+                    "id": "orig",
+                    "name": "Original",
+                    "nodes": [],
+                    "connections": {},
+                }
+                mock_create.return_value = {"id": "new_id", "name": "Clone", "active": False}
+                mock_activate.return_value = {"id": "new_id", "name": "Clone", "active": True}
+
+                result = await server.clone_workflow("orig", "Clone", activate=True)
+
+                mock_activate.assert_called_once_with("new_id", True)
+                assert result["cloned_workflow"]["active"] is True
+
+
+@pytest.mark.asyncio
+async def test_mcp_clone_workflow_error_passthrough():
+    """Test clone_workflow passes through API errors."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "get_workflow") as mock_get:
+        mock_get.return_value = {"error": "HTTP 404", "message": "Not found"}
+
+        result = await server.clone_workflow("bad_id", "Clone")
+
+        assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_clone_workflow_create_error():
+    """Test clone_workflow handles create_workflow errors."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "get_workflow") as mock_get:
+        with patch.object(server.client, "create_workflow") as mock_create:
+            mock_get.return_value = {
+                "id": "orig",
+                "name": "Original",
+                "nodes": [],
+                "connections": {},
+            }
+            mock_create.return_value = {"error": "HTTP 400", "message": "Bad request"}
+
+            result = await server.clone_workflow("orig", "Clone")
+
+            assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_mcp_clone_workflow_adds_settings():
+    """Test clone_workflow adds settings if missing."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "get_workflow") as mock_get:
+        with patch.object(server.client, "create_workflow") as mock_create:
+            mock_get.return_value = {
+                "id": "orig",
+                "name": "Original",
+                "nodes": [],
+                "connections": {},
+                # No settings field
+            }
+            mock_create.return_value = {"id": "new_id", "name": "Clone"}
+
+            await server.clone_workflow("orig", "Clone")
+
+            call_args = mock_create.call_args[0][0]
+            assert "settings" in call_args
+            assert call_args["settings"]["executionOrder"] == "v1"
