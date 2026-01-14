@@ -15,6 +15,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .client import N8nClient
 from .utils import handle_errors
+from .validator import validate_workflow as _validate_workflow
 
 # Load environment variables from .env file in the plugin's directory
 # This ensures .env works when running as an installed plugin
@@ -43,13 +44,43 @@ async def cleanup_client() -> None:
 
 @mcp.tool()
 @handle_errors
-async def list_workflows() -> dict[str, Any]:
-    """List all workflows from n8n.
+async def list_workflows(
+    name_contains: str | None = None,
+    active: bool | None = None,
+    tag_ids: str | None = None,
+) -> dict[str, Any]:
+    """List workflows from n8n with optional filtering.
+
+    All filters are optional. When multiple filters are specified, they are
+    combined with AND logic (workflows must match ALL criteria).
+
+    Args:
+        name_contains: Filter by name substring (case-insensitive).
+                       Example: "email" matches "Send Email", "EMAIL_notify", etc.
+        active: Filter by active status. True=active only, False=inactive only,
+                None (default)=all workflows.
+        tag_ids: JSON array of tag IDs to filter by. Workflows must have ALL
+                 specified tags. Example: '["tag1", "tag2"]'
 
     Returns:
-        Dictionary containing workflows data from n8n API
+        Dictionary containing filtered workflows data from n8n API
+
+    Examples:
+        # List all active workflows
+        list_workflows(active=True)
+
+        # Find workflows with "backup" in the name
+        list_workflows(name_contains="backup")
+
+        # Find inactive workflows tagged with specific tag
+        list_workflows(active=False, tag_ids='["abc123"]')
     """
-    return await client.list_workflows()
+    tag_list = json.loads(tag_ids) if tag_ids else None
+    return await client.list_workflows(
+        name_contains=name_contains,
+        active=active,
+        tag_ids=tag_list,
+    )
 
 
 @mcp.tool()
@@ -124,6 +155,58 @@ async def activate_workflow(workflow_id: str, active: bool) -> dict[str, Any]:
         Dictionary containing updated workflow from n8n API
     """
     return await client.activate_workflow(workflow_id, active)
+
+
+@mcp.tool()
+@handle_errors
+async def validate_workflow(workflow_data: str) -> dict[str, Any]:
+    """Validate a workflow definition before creating or updating.
+
+    Checks the workflow against n8n API requirements and reports errors
+    and warnings. Use this BEFORE create_workflow or update_workflow to
+    catch issues early with clear, actionable messages.
+
+    Validation checks include:
+    - Forbidden fields that cause "must NOT have additional properties" errors
+    - Missing required fields (name, nodes, connections)
+    - Node structure validation (id, name, type, typeVersion, position)
+    - Connection references to existing nodes
+    - Credential references (warns if using name instead of id)
+    - Recommended settings (executionOrder)
+
+    Args:
+        workflow_data: JSON string containing workflow definition to validate
+
+    Returns:
+        Dictionary with validation results:
+        - valid (bool): True if no errors found
+        - errors (list): List of error messages (will cause API rejection)
+        - warnings (list): List of warning messages (may cause issues)
+        - error_count (int): Number of errors
+        - warning_count (int): Number of warnings
+
+    Example usage:
+        1. validate_workflow(workflow_json)  # Check for issues
+        2. If valid=True, proceed with create_workflow(workflow_json)
+        3. If valid=False, fix the errors listed and re-validate
+
+    Example response:
+        {
+            "valid": false,
+            "errors": [
+                "Forbidden field 'active' present. Remove it to avoid error.",
+                "Node 'HTTP Request' missing required field 'typeVersion'."
+            ],
+            "warnings": [
+                "Node 'HTTP Request' references credential 'My API' by name. Use 'id'."
+            ],
+            "error_count": 2,
+            "warning_count": 1
+        }
+    """
+    workflow_dict = json.loads(workflow_data)
+    result = _validate_workflow(workflow_dict)
+    return result.to_dict()
 
 
 @mcp.tool()
