@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 
 
-class N8nClient:
+class N8nClient:  # pylint: disable=too-many-public-methods
     """Async HTTP client for n8n REST API."""
 
     def __init__(self, base_url: str, api_key: str, verify_ssl: bool = False):
@@ -70,7 +70,7 @@ class N8nClient:
             }
         except httpx.RequestError as e:
             return {"error": "Network error", "message": str(e)}
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             return {"error": "Unknown error", "message": str(e)}
 
     async def list_workflows(self) -> dict[str, Any]:
@@ -298,6 +298,15 @@ class N8nClient:
         return await self._request("POST", f"/api/v1/workflows/{workflow_id}/deactivate")
 
     # Credential Management
+
+    async def list_credentials(self) -> dict[str, Any]:
+        """List all credentials from n8n.
+
+        Returns:
+            Response data with list of credentials (id, name, type).
+            Credential data is redacted for security.
+        """
+        return await self._request("GET", "/api/v1/credentials")
 
     async def create_credential(self, credential_data: dict[str, Any]) -> dict[str, Any]:
         """Create a new credential.

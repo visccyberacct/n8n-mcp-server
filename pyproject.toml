@@ -7,7 +7,7 @@ packages = ["src/n8n_mcp"]
 
 [project]
 name = "n8n-mcp-server"
-version = "0.3.2"
+version = "0.4.3"
 description = "MCP server providing tools to interact with n8n workflow automation platform"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -40,6 +40,9 @@ dev = [
     "black>=24.0.0",
     "ruff>=0.3.0",
     "mypy>=1.8.0",
+    "pylint>=3.0.0",
+    "flake8>=7.0.0",
+    "bandit>=1.7.0",
 ]
 
 [project.scripts]

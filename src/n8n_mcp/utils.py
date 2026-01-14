@@ -33,7 +33,7 @@ def handle_errors(func: F) -> F:
             return await func(*args, **kwargs)  # type: ignore[no-any-return]
         except json.JSONDecodeError as e:
             return {"error": "Invalid JSON", "message": str(e)}
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             return {"error": str(e)}
 
     return cast(F, wrapper)
