@@ -1063,3 +1063,433 @@ def test_execution_list_response_model():
     response = ExecutionListResponse(data=[{"id": "1"}], count=1)
     assert len(response.data) == 1
     assert response.count == 1
+
+
+# ============================================================================
+# Workflow Filtering Tests
+# Tests for client-side filtering in list_workflows
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_list_workflows_filter_by_name():
+    """Test filtering workflows by name substring."""
+    with patch("httpx.AsyncClient.request") as mock_request:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"id": "1", "name": "Email Notification", "active": True},
+                {"id": "2", "name": "Backup Daily", "active": True},
+                {"id": "3", "name": "Send Email Report", "active": False},
+            ]
+        }
+        mock_request.return_value = mock_response
+
+        client = N8nClient(base_url="https://n8n-backend.homelab.com", api_key="test_key")
+        result = await client.list_workflows(name_contains="email")
+
+        assert "data" in result
+        assert len(result["data"]) == 2
+        assert all("email" in w["name"].lower() for w in result["data"])
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_list_workflows_filter_by_active_true():
+    """Test filtering workflows by active=True."""
+    with patch("httpx.AsyncClient.request") as mock_request:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"id": "1", "name": "Workflow A", "active": True},
+                {"id": "2", "name": "Workflow B", "active": False},
+                {"id": "3", "name": "Workflow C", "active": True},
+            ]
+        }
+        mock_request.return_value = mock_response
+
+        client = N8nClient(base_url="https://n8n-backend.homelab.com", api_key="test_key")
+        result = await client.list_workflows(active=True)
+
+        assert len(result["data"]) == 2
+        assert all(w["active"] is True for w in result["data"])
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_list_workflows_filter_by_active_false():
+    """Test filtering workflows by active=False."""
+    with patch("httpx.AsyncClient.request") as mock_request:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"id": "1", "name": "Workflow A", "active": True},
+                {"id": "2", "name": "Workflow B", "active": False},
+            ]
+        }
+        mock_request.return_value = mock_response
+
+        client = N8nClient(base_url="https://n8n-backend.homelab.com", api_key="test_key")
+        result = await client.list_workflows(active=False)
+
+        assert len(result["data"]) == 1
+        assert result["data"][0]["active"] is False
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_list_workflows_filter_by_tags():
+    """Test filtering workflows by tag IDs."""
+    with patch("httpx.AsyncClient.request") as mock_request:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"id": "1", "name": "Workflow A", "tags": [{"id": "tag1"}, {"id": "tag2"}]},
+                {"id": "2", "name": "Workflow B", "tags": [{"id": "tag1"}]},
+                {"id": "3", "name": "Workflow C", "tags": []},
+            ]
+        }
+        mock_request.return_value = mock_response
+
+        client = N8nClient(base_url="https://n8n-backend.homelab.com", api_key="test_key")
+        result = await client.list_workflows(tag_ids=["tag1", "tag2"])
+
+        # Only Workflow A has both tags
+        assert len(result["data"]) == 1
+        assert result["data"][0]["id"] == "1"
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_list_workflows_combined_filters():
+    """Test combining multiple filters (AND logic)."""
+    with patch("httpx.AsyncClient.request") as mock_request:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": [
+                {"id": "1", "name": "Email Active", "active": True, "tags": [{"id": "prod"}]},
+                {"id": "2", "name": "Email Inactive", "active": False, "tags": [{"id": "prod"}]},
+                {"id": "3", "name": "Backup Active", "active": True, "tags": [{"id": "prod"}]},
+            ]
+        }
+        mock_request.return_value = mock_response
+
+        client = N8nClient(base_url="https://n8n-backend.homelab.com", api_key="test_key")
+        result = await client.list_workflows(name_contains="email", active=True, tag_ids=["prod"])
+
+        # Only Workflow 1 matches all criteria
+        assert len(result["data"]) == 1
+        assert result["data"][0]["id"] == "1"
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_list_workflows_no_filter():
+    """Test list_workflows returns all when no filters applied."""
+    with patch("httpx.AsyncClient.request") as mock_request:
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"data": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}
+        mock_request.return_value = mock_response
+
+        client = N8nClient(base_url="https://n8n-backend.homelab.com", api_key="test_key")
+        result = await client.list_workflows()
+
+        assert len(result["data"]) == 3
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_list_workflows_filter_error_passthrough():
+    """Test that errors pass through without filtering."""
+    with patch("httpx.AsyncClient.request") as mock_request:
+        import httpx
+
+        mock_response = MagicMock()
+        mock_response.status_code = 401
+        mock_response.text = "Unauthorized"
+        mock_request.side_effect = httpx.HTTPStatusError(
+            "401 Unauthorized", request=MagicMock(), response=mock_response
+        )
+
+        client = N8nClient(base_url="https://n8n-backend.homelab.com", api_key="test_key")
+        result = await client.list_workflows(name_contains="test")
+
+        assert "error" in result
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_workflows_with_filters():
+    """Test list_workflows MCP tool with filter parameters."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "list_workflows") as mock_method:
+        mock_method.return_value = {"data": [{"id": "1"}]}
+        result = await server.list_workflows(name_contains="test", active=True, tag_ids='["tag1"]')
+        assert result == {"data": [{"id": "1"}]}
+        mock_method.assert_called_once_with(name_contains="test", active=True, tag_ids=["tag1"])
+
+
+@pytest.mark.asyncio
+async def test_mcp_list_workflows_no_filters():
+    """Test list_workflows MCP tool without filters."""
+    from n8n_mcp import server
+
+    with patch.object(server.client, "list_workflows") as mock_method:
+        mock_method.return_value = {"data": []}
+        result = await server.list_workflows()
+        assert result == {"data": []}
+        mock_method.assert_called_once_with(name_contains=None, active=None, tag_ids=None)
+
+
+# ============================================================================
+# Workflow Validation Tests
+# Tests for validator.py and validate_workflow MCP tool
+# ============================================================================
+
+
+def test_validator_valid_workflow():
+    """Test validation of a valid workflow."""
+    from n8n_mcp.validator import validate_workflow
+
+    workflow = {
+        "name": "Test Workflow",
+        "nodes": [
+            {
+                "id": "node-1",
+                "name": "Start",
+                "type": "n8n-nodes-base.start",
+                "typeVersion": 1,
+                "position": [250, 300],
+            }
+        ],
+        "connections": {},
+        "settings": {"executionOrder": "v1"},
+    }
+    result = validate_workflow(workflow)
+
+    assert result.is_valid is True
+    assert len(result.errors) == 0
+
+
+def test_validator_forbidden_fields():
+    """Test detection of forbidden fields."""
+    from n8n_mcp.validator import validate_workflow
+
+    workflow = {
+        "name": "Test",
+        "nodes": [],
+        "connections": {},
+        "active": True,  # Forbidden
+        "id": "wf_123",  # Forbidden
+        "versionId": "v1",  # Forbidden
+    }
+    result = validate_workflow(workflow)
+
+    assert result.is_valid is False
+    assert len(result.errors) == 3
+    assert any("active" in e for e in result.errors)
+    assert any("id" in e for e in result.errors)
+    assert any("versionId" in e for e in result.errors)
+
+
+def test_validator_missing_required_fields():
+    """Test detection of missing required fields."""
+    from n8n_mcp.validator import validate_workflow
+
+    workflow = {"name": "Test"}  # Missing nodes and connections
+    result = validate_workflow(workflow)
+
+    assert result.is_valid is False
+    assert any("connections" in e for e in result.errors)
+    assert any("nodes" in e for e in result.errors)
+
+
+def test_validator_invalid_node_structure():
+    """Test detection of invalid node structure."""
+    from n8n_mcp.validator import validate_workflow
+
+    workflow = {
+        "name": "Test",
+        "nodes": [
+            {
+                "id": "node-1",
+                "name": "Start",
+                # Missing: type, typeVersion, position
+            }
+        ],
+        "connections": {},
+    }
+    result = validate_workflow(workflow)
+
+    assert result.is_valid is False
+    assert any("type" in e for e in result.errors)
+    assert any("typeVersion" in e for e in result.errors)
+    assert any("position" in e for e in result.errors)
+
+
+def test_validator_duplicate_node_ids():
+    """Test detection of duplicate node IDs."""
+    from n8n_mcp.validator import validate_workflow
+
+    workflow = {
+        "name": "Test",
+        "nodes": [
+            {"id": "node-1", "name": "A", "type": "t", "typeVersion": 1, "position": [0, 0]},
+            {"id": "node-1", "name": "B", "type": "t", "typeVersion": 1, "position": [0, 0]},
+        ],
+        "connections": {},
+    }
+    result = validate_workflow(workflow)
+
+    assert result.is_valid is False
+    assert any("Duplicate node ID" in e for e in result.errors)
+
+
+def test_validator_invalid_position_format():
+    """Test detection of invalid position format."""
+    from n8n_mcp.validator import validate_workflow
+
+    workflow = {
+        "name": "Test",
+        "nodes": [
+            {
+                "id": "node-1",
+                "name": "Start",
+                "type": "t",
+                "typeVersion": 1,
+                "position": [100],  # Should be [x, y]
+            }
+        ],
+        "connections": {},
+    }
+    result = validate_workflow(workflow)
+
+    assert result.is_valid is False
+    assert any("position must be [x, y]" in e for e in result.errors)
+
+
+def test_validator_credential_by_name_warning():
+    """Test warning for credentials referenced by name instead of id."""
+    from n8n_mcp.validator import validate_workflow
+
+    workflow = {
+        "name": "Test",
+        "nodes": [
+            {
+                "id": "node-1",
+                "name": "HTTP",
+                "type": "n8n-nodes-base.httpRequest",
+                "typeVersion": 1,
+                "position": [0, 0],
+                "credentials": {"httpBasicAuth": {"name": "My Cred"}},  # Warning: no id
+            }
+        ],
+        "connections": {},
+        "settings": {"executionOrder": "v1"},
+    }
+    result = validate_workflow(workflow)
+
+    assert result.is_valid is True  # Warnings don't make it invalid
+    assert len(result.warnings) >= 1
+    assert any("by name" in w for w in result.warnings)
+
+
+def test_validator_missing_settings_warning():
+    """Test warning for missing settings field."""
+    from n8n_mcp.validator import validate_workflow
+
+    workflow = {
+        "name": "Test",
+        "nodes": [{"id": "n1", "name": "N", "type": "t", "typeVersion": 1, "position": [0, 0]}],
+        "connections": {},
+        # No settings
+    }
+    result = validate_workflow(workflow)
+
+    assert result.is_valid is True
+    assert any("settings" in w for w in result.warnings)
+
+
+def test_validator_connection_invalid_source():
+    """Test detection of connection referencing non-existent node."""
+    from n8n_mcp.validator import validate_workflow
+
+    workflow = {
+        "name": "Test",
+        "nodes": [{"id": "n1", "name": "NodeA", "type": "t", "typeVersion": 1, "position": [0, 0]}],
+        "connections": {"NonExistent": {}},  # This node doesn't exist
+    }
+    result = validate_workflow(workflow)
+
+    assert result.is_valid is False
+    assert any("NonExistent" in e and "does not match" in e for e in result.errors)
+
+
+def test_validator_empty_nodes_warning():
+    """Test warning for empty nodes array."""
+    from n8n_mcp.validator import validate_workflow
+
+    workflow = {
+        "name": "Test",
+        "nodes": [],
+        "connections": {},
+        "settings": {"executionOrder": "v1"},
+    }
+    result = validate_workflow(workflow)
+
+    assert result.is_valid is True
+    assert any("no nodes" in w for w in result.warnings)
+
+
+def test_validation_result_to_dict():
+    """Test ValidationResult.to_dict() method."""
+    from n8n_mcp.validator import ValidationResult
+
+    result = ValidationResult()
+    result.add_error("Error 1")
+    result.add_error("Error 2")
+    result.add_warning("Warning 1")
+
+    d = result.to_dict()
+    assert d["valid"] is False
+    assert d["error_count"] == 2
+    assert d["warning_count"] == 1
+    assert len(d["errors"]) == 2
+    assert len(d["warnings"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_mcp_validate_workflow():
+    """Test validate_workflow MCP tool."""
+    from n8n_mcp import server
+
+    workflow_json = """{
+        "name": "Test",
+        "nodes": [{"id": "n1", "name": "N", "type": "t", "typeVersion": 1, "position": [0, 0]}],
+        "connections": {},
+        "settings": {"executionOrder": "v1"}
+    }"""
+    result = await server.validate_workflow(workflow_json)
+
+    assert result["valid"] is True
+    assert result["error_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_mcp_validate_workflow_with_errors():
+    """Test validate_workflow MCP tool with invalid workflow."""
+    from n8n_mcp import server
+
+    workflow_json = '{"name": "Test", "active": true}'  # Missing fields, forbidden active
+    result = await server.validate_workflow(workflow_json)
+
+    assert result["valid"] is False
+    assert result["error_count"] > 0
+    assert any("active" in e for e in result["errors"])

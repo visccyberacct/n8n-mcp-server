@@ -73,13 +73,49 @@ class N8nClient:  # pylint: disable=too-many-public-methods
         except Exception as e:  # pylint: disable=broad-exception-caught
             return {"error": "Unknown error", "message": str(e)}
 
-    async def list_workflows(self) -> dict[str, Any]:
-        """Get all workflows from n8n.
+    async def list_workflows(
+        self,
+        name_contains: str | None = None,
+        active: bool | None = None,
+        tag_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Get workflows from n8n with optional filtering.
+
+        Filtering is performed client-side since n8n API v1 doesn't support
+        server-side filtering for workflows.
+
+        Args:
+            name_contains: Filter by name substring (case-insensitive)
+            active: Filter by active status (True=active, False=inactive, None=all)
+            tag_ids: Filter by tag IDs (workflows must have ALL specified tags)
 
         Returns:
-            Response data with workflows list
+            Response data with filtered workflows list
         """
-        return await self._request("GET", "/api/v1/workflows")
+        result = await self._request("GET", "/api/v1/workflows")
+
+        # Return early if error or no filtering needed
+        if "error" in result or (name_contains is None and active is None and tag_ids is None):
+            return result
+
+        # Apply client-side filtering
+        workflows = result.get("data", [])
+        filtered = workflows
+
+        if name_contains is not None:
+            name_lower = name_contains.lower()
+            filtered = [w for w in filtered if name_lower in w.get("name", "").lower()]
+
+        if active is not None:
+            filtered = [w for w in filtered if w.get("active") == active]
+
+        if tag_ids is not None and tag_ids:
+            tag_set = set(tag_ids)
+            filtered = [
+                w for w in filtered if tag_set.issubset({t.get("id") for t in w.get("tags", [])})
+            ]
+
+        return {"data": filtered}
 
     async def get_workflow(self, workflow_id: str) -> dict[str, Any]:
         """Get specific workflow by ID.
