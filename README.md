@@ -4,29 +4,60 @@ MCP server providing tools to interact with the n8n workflow automation platform
 
 ## Features
 
-- 9 n8n API tools for complete workflow automation
+- **28 n8n API tools** for complete workflow automation
 - Full workflow CRUD operations (Create, Read, Update, Delete)
+- Workflow health monitoring and cloning
+- Credential and tag management
+- Client-side workflow filtering (name, active status, tags)
+- Pre-submission workflow validation
 - Async/await support for all operations
 - Secure API key authentication
 - SSL/TLS support for homelab environments
 - Complete type hints and documentation
 - Production-ready error handling
-- Comprehensive test suite
+- 99 tests with 94% code coverage
 
 ## Tools
 
 ### Workflow Management
-- `list_workflows` - Get all workflows from n8n
+- `list_workflows` - List workflows with optional filtering (name, active, tags)
 - `get_workflow` - Get specific workflow by ID
 - `create_workflow` - Create new workflows programmatically
 - `update_workflow` - Update existing workflow configuration
 - `delete_workflow` - Delete workflows by ID
 - `activate_workflow` - Activate or deactivate a workflow
+- `deactivate_workflow` - Deactivate a workflow
+- `get_workflow_version` - Get a specific version of a workflow
+- `transfer_workflow` - Transfer workflow to a different project
+- `get_workflow_tags` - Get tags assigned to a workflow
+- `update_workflow_tags` - Update tags assigned to a workflow
+- `clone_workflow` - Clone a workflow with automatic field cleanup
+- `validate_workflow` - Validate workflow structure before creating
 
 ### Workflow Execution
 - `execute_workflow` - Trigger workflow execution
 - `get_executions` - List workflow execution history
 - `get_execution` - Get specific execution details by ID
+- `delete_execution` - Delete an execution history entry
+- `retry_execution` - Retry a failed execution
+
+### Workflow Analysis
+- `get_workflow_health` - Analyze workflow health based on recent executions
+
+### Credential Management
+- `list_credentials` - List all credentials (IDs only, data redacted)
+- `create_credential` - Create a new credential
+- `update_credential` - Update an existing credential
+- `delete_credential` - Delete a credential
+- `get_credential_schema` - Get schema for a credential type
+- `transfer_credential` - Transfer credential to a different project
+
+### Tag Management
+- `list_tags` - List all tags
+- `create_tag` - Create a new tag
+- `get_tag` - Get a specific tag by ID
+- `update_tag` - Update an existing tag
+- `delete_tag` - Delete a tag
 
 ## Installation
 
@@ -221,16 +252,22 @@ See [N8N_SERVER_UPDATE_WORKFLOW.md](./docs/N8N_SERVER_UPDATE_WORKFLOW.md) for:
 n8n-mcp-server/
 ├── src/n8n_mcp/
 │   ├── __init__.py       # Package initialization
-│   ├── server.py         # FastMCP server with 9 tools
-│   └── client.py         # n8n API client wrapper (SSL support)
+│   ├── server.py         # FastMCP server with 28 tools
+│   ├── client.py         # n8n API client wrapper (SSL support)
+│   ├── validator.py      # Workflow validation utilities
+│   ├── models.py         # Pydantic models for n8n data
+│   └── utils.py          # Shared utilities
 ├── tests/
 │   ├── __init__.py
-│   └── test_server.py    # Comprehensive test suite
-├── pyproject.toml        # Project dependencies
-├── README.md             # This file
+│   └── test_server.py    # 99 tests with 94% coverage
 ├── docs/
 │   ├── N8N_API_WORKFLOW_CREATION_REPORT.md  # Detailed API research
-│   └── N8N_SERVER_UPDATE_WORKFLOW.md        # Server update workflow guide
+│   ├── N8N_SERVER_UPDATE_WORKFLOW.md        # Server update workflow guide
+│   ├── CREDENTIAL_TYPES.md                  # Credential type reference
+│   ├── CONNECTION_TYPES.md                  # Connection type reference
+│   └── KNOWN_LIMITATIONS.md                 # API limitations and workarounds
+├── pyproject.toml        # Project dependencies
+├── README.md             # This file
 └── .env.example          # Example configuration
 ```
 

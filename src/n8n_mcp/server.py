@@ -624,6 +624,254 @@ async def delete_tag(tag_id: str) -> dict[str, Any]:
     return await client.delete_tag(tag_id)
 
 
+@mcp.tool()
+@handle_errors
+async def get_workflow_health(workflow_id: str, execution_limit: int = 20) -> dict[str, Any]:
+    """Get health status and metrics for a workflow.
+
+    Analyzes recent executions to compute health metrics including:
+    - Health status (healthy/degraded/unhealthy/unknown)
+    - Success rate percentage
+    - Execution counts (total, success, failed)
+    - Average execution duration
+    - Issues and recommendations
+
+    Health Status Thresholds:
+    - healthy: >95% success rate
+    - degraded: 80-95% success rate
+    - unhealthy: <80% success rate
+    - unknown: No execution history
+
+    Args:
+        workflow_id: The ID of the workflow to analyze
+        execution_limit: Number of recent executions to analyze (default: 20)
+
+    Returns:
+        Dictionary containing health metrics:
+        - workflow_id (str): The workflow ID
+        - workflow_name (str): The workflow name
+        - health_status (str): "healthy", "degraded", "unhealthy", or "unknown"
+        - success_rate (float): Percentage of successful executions (0-100)
+        - total_executions (int): Number of executions analyzed
+        - successful_executions (int): Number of successful executions
+        - failed_executions (int): Number of failed executions
+        - avg_duration_seconds (float|null): Average execution duration
+        - issues (list): List of identified issues
+        - recommendations (list): List of recommendations
+
+    Example response:
+        {
+            "workflow_id": "abc123",
+            "workflow_name": "Daily Backup",
+            "health_status": "degraded",
+            "success_rate": 85.0,
+            "total_executions": 20,
+            "successful_executions": 17,
+            "failed_executions": 3,
+            "avg_duration_seconds": 12.5,
+            "issues": ["3 failed executions in recent history"],
+            "recommendations": ["Review failed execution logs to identify root cause"]
+        }
+    """
+    # Get workflow details
+    workflow = await client.get_workflow(workflow_id)
+    if "error" in workflow:
+        return workflow
+
+    workflow_name = workflow.get("name", "Unknown")
+
+    # Get recent executions
+    executions_response = await client.get_executions(workflow_id, execution_limit)
+    if "error" in executions_response:
+        return executions_response
+
+    executions = executions_response.get("data", [])
+
+    # Initialize metrics
+    issues: list[str] = []
+    recommendations: list[str] = []
+
+    # Handle no execution history
+    if not executions:
+        return {
+            "workflow_id": workflow_id,
+            "workflow_name": workflow_name,
+            "health_status": "unknown",
+            "success_rate": None,
+            "total_executions": 0,
+            "successful_executions": 0,
+            "failed_executions": 0,
+            "avg_duration_seconds": None,
+            "issues": ["No execution history available"],
+            "recommendations": ["Execute the workflow to establish baseline metrics"],
+        }
+
+    # Calculate metrics
+    total = len(executions)
+    # Successful: finished with success status (or no error status)
+    successful = sum(1 for e in executions if e.get("finished") and e.get("status") != "error")
+    # Failed: has error status or was stopped without finishing
+    failed = sum(
+        1
+        for e in executions
+        if e.get("status") == "error" or (e.get("stoppedAt") and not e.get("finished"))
+    )
+    # Adjust for executions that are still running or have unknown status
+    running = total - successful - failed
+
+    # Calculate success rate based on completed executions
+    completed = successful + failed
+    if completed > 0:
+        success_rate = (successful / completed) * 100
+    else:
+        success_rate = 100.0 if running == total else 0.0
+
+    # Calculate average duration
+    durations = []
+    for execution in executions:
+        started = execution.get("startedAt")
+        stopped = execution.get("stoppedAt")
+        if started and stopped:
+            # Parse ISO timestamps and calculate duration
+            from datetime import datetime
+
+            try:
+                start_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
+                stop_dt = datetime.fromisoformat(stopped.replace("Z", "+00:00"))
+                duration = (stop_dt - start_dt).total_seconds()
+                if duration >= 0:
+                    durations.append(duration)
+            except (ValueError, TypeError):
+                pass
+
+    avg_duration = sum(durations) / len(durations) if durations else None
+
+    # Determine health status
+    if completed == 0:
+        health_status = "unknown"
+        issues.append("No completed executions to analyze")
+    elif success_rate > 95:
+        health_status = "healthy"
+    elif success_rate >= 80:
+        health_status = "degraded"
+        issues.append(f"{failed} failed executions in recent history")
+        recommendations.append("Review failed execution logs to identify root cause")
+    else:
+        health_status = "unhealthy"
+        issues.append(f"High failure rate: {failed} of {completed} executions failed")
+        recommendations.append("Investigate workflow configuration and external dependencies")
+        recommendations.append("Consider disabling workflow until issues are resolved")
+
+    # Additional checks
+    if running > 0:
+        issues.append(f"{running} executions currently running or in unknown state")
+
+    if not workflow.get("active"):
+        issues.append("Workflow is currently inactive")
+        recommendations.append("Activate workflow if it should be running")
+
+    return {
+        "workflow_id": workflow_id,
+        "workflow_name": workflow_name,
+        "health_status": health_status,
+        "success_rate": round(success_rate, 1),
+        "total_executions": total,
+        "successful_executions": successful,
+        "failed_executions": failed,
+        "avg_duration_seconds": round(avg_duration, 2) if avg_duration else None,
+        "issues": issues,
+        "recommendations": recommendations,
+    }
+
+
+@mcp.tool()
+@handle_errors
+async def clone_workflow(
+    source_workflow_id: str,
+    new_name: str,
+    activate: bool = False,
+) -> dict[str, Any]:
+    """Clone an existing workflow with automatic field cleanup.
+
+    Creates a copy of a workflow, automatically removing read-only fields
+    that would cause API errors. Credentials are preserved (same IDs).
+
+    This is useful for:
+    - Creating workflow templates
+    - Testing workflow modifications safely
+    - Duplicating workflows across environments
+
+    Args:
+        source_workflow_id: The ID of the workflow to clone
+        new_name: Name for the cloned workflow
+        activate: Whether to activate the cloned workflow (default: False)
+
+    Returns:
+        Dictionary containing:
+        - cloned_workflow: The newly created workflow details
+        - source_workflow_id: The original workflow ID
+        - fields_removed: List of fields that were automatically removed
+
+    Example:
+        clone_workflow("abc123", "My Workflow - Copy", activate=False)
+
+    Note:
+        - The cloned workflow gets a new ID
+        - Execution history is NOT copied
+        - Tags are NOT copied (use update_workflow_tags to add tags)
+        - Credentials are preserved (references same credential IDs)
+    """
+    from .validator import FORBIDDEN_FIELDS
+
+    # Get source workflow
+    source = await client.get_workflow(source_workflow_id)
+    if "error" in source:
+        return source
+
+    # Track removed fields for transparency
+    fields_removed: list[str] = []
+
+    # Create clean workflow data
+    clean_workflow: dict[str, Any] = {}
+
+    # Copy allowed fields
+    allowed_fields = {"name", "nodes", "connections", "settings"}
+    for field in allowed_fields:
+        if field in source:
+            clean_workflow[field] = source[field]
+
+    # Track which forbidden fields were present and removed
+    for field in FORBIDDEN_FIELDS:
+        if field in source:
+            fields_removed.append(field)
+
+    # Set new name
+    clean_workflow["name"] = new_name
+
+    # Ensure settings exist with recommended executionOrder
+    if "settings" not in clean_workflow:
+        clean_workflow["settings"] = {"executionOrder": "v1"}
+    elif "executionOrder" not in clean_workflow.get("settings", {}):
+        clean_workflow["settings"]["executionOrder"] = "v1"
+
+    # Create the cloned workflow
+    result = await client.create_workflow(clean_workflow)
+    if "error" in result:
+        return result
+
+    # Optionally activate
+    if activate and "id" in result:
+        activation_result = await client.activate_workflow(result["id"], True)
+        if "error" not in activation_result:
+            result = activation_result
+
+    return {
+        "cloned_workflow": result,
+        "source_workflow_id": source_workflow_id,
+        "fields_removed": sorted(fields_removed),
+    }
+
+
 def main() -> None:
     """Entry point for the n8n MCP server."""
     mcp.run()
