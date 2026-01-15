@@ -7,6 +7,7 @@ Created: 2025-11-20
 
 import json
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .client import N8nClient
 from .utils import handle_errors
+from .validator import FORBIDDEN_FIELDS
 from .validator import validate_workflow as _validate_workflow
 
 # Load environment variables from .env file in the plugin's directory
@@ -626,6 +628,7 @@ async def delete_tag(tag_id: str) -> dict[str, Any]:
 
 @mcp.tool()
 @handle_errors
+# pylint: disable=too-many-locals,too-many-branches,too-many-statements
 async def get_workflow_health(workflow_id: str, execution_limit: int = 20) -> dict[str, Any]:
     """Get health status and metrics for a workflow.
 
@@ -733,8 +736,6 @@ async def get_workflow_health(workflow_id: str, execution_limit: int = 20) -> di
         stopped = execution.get("stoppedAt")
         if started and stopped:
             # Parse ISO timestamps and calculate duration
-            from datetime import datetime
-
             try:
                 start_dt = datetime.fromisoformat(started.replace("Z", "+00:00"))
                 stop_dt = datetime.fromisoformat(stopped.replace("Z", "+00:00"))
@@ -821,8 +822,6 @@ async def clone_workflow(
         - Tags are NOT copied (use update_workflow_tags to add tags)
         - Credentials are preserved (references same credential IDs)
     """
-    from .validator import FORBIDDEN_FIELDS
-
     # Get source workflow
     source = await client.get_workflow(source_workflow_id)
     if "error" in source:

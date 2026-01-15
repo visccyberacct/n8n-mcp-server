@@ -95,7 +95,7 @@ pipeline {
         )
         string(
             name: 'DTRACK_PROJECT_UUID',
-            defaultValue: '',
+            defaultValue: 'b8cc347f-77d9-4ce2-b138-fbe6aba6ee9e',
             description: 'Dependency-Track project UUID (leave empty for auto-create)'
         )
         booleanParam(

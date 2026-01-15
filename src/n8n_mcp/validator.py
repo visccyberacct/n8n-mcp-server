@@ -197,10 +197,10 @@ def _check_recommended_settings(workflow: dict[str, Any], result: ValidationResu
 
     if settings is None:
         result.add_warning(
-            "Missing 'settings' field. Recommend adding: " '{"settings": {"executionOrder": "v1"}}'
+            'Missing \'settings\' field. Recommend adding: {"settings": {"executionOrder": "v1"}}'
         )
     elif isinstance(settings, dict):
         if "executionOrder" not in settings:
             result.add_warning(
-                "Missing 'executionOrder' in settings. Recommend: " '{"executionOrder": "v1"}'
+                'Missing \'executionOrder\' in settings. Recommend: {"executionOrder": "v1"}'
             )
