@@ -4,7 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-n8n-mcp-server is an MCP (Model Context Protocol) server providing 9 tools to interact with the n8n workflow automation platform at n8n.homelab.com. Built with FastMCP and Python 3.11+, it enables Claude Code to manage workflows (CRUD operations), execute workflows, and monitor execution history.
+n8n-mcp-server is an MCP (Model Context Protocol) server providing **30 tools** to interact with the n8n workflow automation platform. Built with FastMCP and Python 3.11+, it enables Claude Code to manage workflows (CRUD, execute, clone, validate), credentials, tags, and executions.
+
+**Key Capabilities:**
+- Workflow CRUD + filtering, cloning, health analysis
+- Credential and tag management
+- Execution history and retry
+- Pre-submission workflow validation
 
 ## **CRITICAL: Development vs Staging**
 
@@ -122,14 +128,14 @@ This interactive command:
 ### Core Components
 
 **src/n8n_mcp/server.py** - FastMCP server entry point
-- Defines 9 MCP tools decorated with `@mcp.tool()` and `@handle_errors`
+- Defines 30 MCP tools decorated with `@mcp.tool()` and `@handle_errors`
 - Loads `.env` from plugin directory (not cwd) to support installed plugin usage
 - Module-level `N8nClient` instance for efficiency (shared across all tool calls)
-- Tools: list_workflows, get_workflow, create_workflow, update_workflow, delete_workflow, activate_workflow, execute_workflow, get_executions, get_execution
+- Tool categories: workflows (13), executions (5), credentials (6), tags (5), health (1)
 
 **src/n8n_mcp/client.py** - N8nClient class
 - Async context manager (`async with`) wrapping httpx for n8n REST API
-- Methods mirror the 9 MCP tools
+- Methods mirror the 30 MCP tools
 - SSL verification disabled (`verify_ssl=False`) for homelab environments
 - Proper cleanup in `__aexit__` and `close()`
 - Internal `_request()` method handles all HTTP errors and returns consistent error dicts
@@ -210,28 +216,25 @@ async def my_tool() -> dict[str, Any]:
     return await client.my_method()
 ```
 
-## Plugin Staging Directory
+## Project Structure (CM Plan)
 
-**Location**: `/home/kviscount.adm@homelab.com/projects/claude-marketplace/plugins/n8n-api/`
+```
+n8n-mcp-server/
+├── .claude-plugin/plugin.json    # Plugin manifest (REQUIRED)
+├── config/mcp.json               # Dev MCP config (uses ${CLAUDE_PLUGIN_ROOT})
+├── skills/n8n-setup/SKILL.md     # Setup skill
+├── commands/                     # Slash commands
+├── agents/                       # Subagents (empty)
+├── hooks/hooks.json              # Event handlers
+├── src/n8n_mcp/                  # MCP server source
+├── tests/                        # pytest tests
+├── docs/                         # Documentation
+├── CHANGELOG.md                  # Version history
+├── pyproject.toml                # Build config
+└── uv.lock                       # Dependency lockfile
+```
 
-**IMPORTANT**: This is the DEPLOYMENT/STAGING directory. Files are copied here from the development directory.
-
-The staging directory contains:
-- `.claude-plugin/plugin.json` - Plugin metadata
-- `.mcp.json` - MCP server configuration
-- `src/` - Source code (copied from development)
-- `skills/` - Skills (copied from development)
-- `commands/` - Commands (copied from development)
-
-**To update staging:**
-1. Make changes in THIS development directory first
-2. Copy updated files to staging directory
-3. Test the plugin from staging
-
-**NEVER:**
-- Create new files directly in staging
-- Edit files in staging without updating development first
-- Use staging as the source of truth
+See `docs/SOFTWARE-CM-PLAN.md` for complete CM specifications.
 
 ## Git Workflow
 
