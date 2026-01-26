@@ -2,7 +2,7 @@
 
 This document describes limitations imposed by the n8n API that cannot be fixed in the MCP layer. These are upstream API issues that require workarounds.
 
-**Last Updated**: 2026-01-13
+**Last Updated**: 2026-01-26
 **n8n Version Tested**: 1.114.3
 
 ---

@@ -10,7 +10,7 @@ name = "n8n-mcp-server"
 version = "0.7.0b1"
 description = "MCP server providing tools to interact with n8n workflow automation platform"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "Kent Viscount", email = "visccyberacct@gmail.com"}
@@ -21,8 +21,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 dependencies = [
@@ -37,34 +37,27 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
-    "black>=24.0.0",
     "ruff>=0.3.0",
     "mypy>=1.8.0",
-    "pylint>=3.0.0",
-    "flake8>=7.0.0",
     "bandit>=1.7.0",
 ]
 
 [project.scripts]
 n8n-mcp-server = "n8n_mcp.server:main"
 
-[tool.black]
-line-length = 100
-target-version = ["py311"]
-
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "B", "C4", "UP"]
-ignore = ["E501"]  # Line too long (handled by black)
+ignore = ["E501"]  # Line too long (handled by ruff format)
 
 [tool.ruff.lint.per-file-ignores]
 "src/n8n_mcp/models.py" = ["N815"]  # Allow mixedCase for n8n API field names
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
