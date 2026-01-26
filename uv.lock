@@ -645,7 +645,7 @@ wheels = [
 
 [[package]]
 name = "n8n-mcp-server"
-version = "0.6.6"
+version = "0.7.0b1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
