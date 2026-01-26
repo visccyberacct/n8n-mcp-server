@@ -4,7 +4,7 @@ MCP server providing tools to interact with the n8n workflow automation platform
 
 ## Features
 
-- **28 n8n API tools** for complete workflow automation
+- **30 n8n API tools** for complete workflow automation
 - Full workflow CRUD operations (Create, Read, Update, Delete)
 - Workflow health monitoring and cloning
 - Credential and tag management
@@ -15,7 +15,7 @@ MCP server providing tools to interact with the n8n workflow automation platform
 - SSL/TLS support for homelab environments
 - Complete type hints and documentation
 - Production-ready error handling
-- 99 tests with 94% code coverage
+- 139 tests with comprehensive code coverage
 
 ## Tools
 
@@ -63,22 +63,19 @@ MCP server providing tools to interact with the n8n workflow automation platform
 
 ### Prerequisites
 
-- Python 3.11 or higher
+- Python 3.12 or higher
 - n8n instance with API access (n8n.homelab.com)
 - Claude CLI installed (`curl -sSL https://claude.ai/install | bash`)
 
 ### Setup
 
 ```bash
-cd ~/scripts/n8n-mcp-server
+cd ~/projects/n8n-mcp-server
 
-# Install dependencies using Poetry
-poetry install
-
-# Or using uv
+# Create virtual environment and install
 uv venv
-source .venv/bin/activate
-uv pip install -e .
+source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+uv pip install -e ".[dev]"
 ```
 
 ### Configuration
@@ -158,7 +155,7 @@ pytest tests/test_server.py -v
 
 ```bash
 # Format code
-black src tests
+ruff format src tests
 
 # Lint code
 ruff check src tests
@@ -252,14 +249,14 @@ See [N8N_SERVER_UPDATE_WORKFLOW.md](./docs/N8N_SERVER_UPDATE_WORKFLOW.md) for:
 n8n-mcp-server/
 ├── src/n8n_mcp/
 │   ├── __init__.py       # Package initialization
-│   ├── server.py         # FastMCP server with 28 tools
+│   ├── server.py         # FastMCP server with 30 tools
 │   ├── client.py         # n8n API client wrapper (SSL support)
 │   ├── validator.py      # Workflow validation utilities
 │   ├── models.py         # Pydantic models for n8n data
 │   └── utils.py          # Shared utilities
 ├── tests/
 │   ├── __init__.py
-│   └── test_server.py    # 99 tests with 94% coverage
+│   └── test_server.py    # 139 tests with comprehensive coverage
 ├── docs/
 │   ├── N8N_API_WORKFLOW_CREATION_REPORT.md  # Detailed API research
 │   ├── N8N_SERVER_UPDATE_WORKFLOW.md        # Server update workflow guide
@@ -280,7 +277,7 @@ MIT License - See LICENSE file for details
 Contributions welcome! Please ensure:
 
 - All tests pass (`pytest`)
-- Code is formatted (`black src tests`)
+- Code is formatted (`ruff format src tests`)
 - Code is linted (`ruff check src tests`)
 - Type hints are provided (`mypy src`)
 - Documentation is updated
