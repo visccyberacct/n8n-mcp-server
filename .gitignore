@@ -45,3 +45,18 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# MCP config is auto-generated during build
+.mcp.json
+
+# CI artifacts
+coverage.xml
+
+# Intermediate files
+.tmp/
+
+# Serena memories (local only)
+.serena/
+
+# API spec artifacts (downloaded during research)
+api-*.json
