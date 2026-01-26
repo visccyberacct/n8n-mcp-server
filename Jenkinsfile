@@ -492,10 +492,10 @@ pipeline {
                             def semgrepResult = sh(
                                 script: '''
                                     echo "=== Installing and Running Semgrep (SAST) ==="
-                                    pip3 install --quiet semgrep
+                                    /root/.local/bin/uv tool install semgrep
 
                                     # Run Semgrep with Python security rules
-                                    semgrep scan \
+                                    /root/.local/bin/semgrep scan \
                                         --config=auto \
                                         --config=p/python \
                                         --config=p/security-audit \
@@ -524,7 +524,7 @@ pipeline {
                                     echo "Total findings:   ${TOTAL_COUNT}"
 
                                     # Show human-readable output
-                                    semgrep scan \
+                                    /root/.local/bin/semgrep scan \
                                         --config=auto \
                                         --config=p/python \
                                         --config=p/security-audit \
