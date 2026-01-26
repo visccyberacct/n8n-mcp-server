@@ -8,13 +8,10 @@ Created: 2025-11-22
 import json
 from collections.abc import Callable
 from functools import wraps
-from typing import Any, TypeVar, cast
-
-# Type variable for generic decorator
-F = TypeVar("F", bound=Callable[..., Any])
+from typing import Any, cast
 
 
-def handle_errors(func: F) -> F:
+def handle_errors[F: Callable[..., Any]](func: F) -> F:
     """Decorator to handle errors in MCP tool functions.
 
     Catches all exceptions and returns them as error dictionaries
