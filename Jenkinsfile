@@ -933,6 +933,7 @@ except:
                             artifact: 'sbom.json',
                             projectId: 'b8cc347f-77d9-4ce2-b138-fbe6aba6ee9e',
                             projectVersion: projectVersion,
+                            dependencyTrackUrl: params.DTRACK_URL,
                             dependencyTrackApiKey: DTRACK_KEY,
                             synchronous: true,
                             projectProperties: [
