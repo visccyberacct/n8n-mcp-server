@@ -77,10 +77,8 @@ pytest --cov=n8n_mcp --cov-report=xml
 
 ### Code Quality (run before committing)
 ```bash
-# Format code (line-length: 100)
-black src tests
-
-# Lint code
+# Format and lint code (line-length: 100)
+ruff format src tests
 ruff check src tests
 
 # Type check (strict mode)
@@ -172,8 +170,8 @@ async def list_workflows() -> dict[str, Any]:
 ```
 
 ### Formatting Standards
-- **Line length**: 100 characters (black + ruff)
-- **Target**: Python 3.11
+- **Line length**: 100 characters (ruff)
+- **Target**: Python 3.12
 - **Imports**: Sorted by ruff
 - **Naming**: snake_case (functions), PascalCase (classes), UPPER_SNAKE_CASE (constants)
 
@@ -196,7 +194,7 @@ async def list_workflows() -> dict[str, Any]:
 2. Add tool function in `server.py` with `@mcp.tool()` and `@handle_errors`
 3. Add comprehensive tests in `tests/test_server.py`
 4. Update README.md tool list
-5. Run: `black src tests && ruff check src tests && mypy src && pytest`
+5. Run: `ruff format --check src tests && ruff check src tests && mypy src && pytest`
 
 ### Environment Loading
 The `.env` file is loaded from the plugin directory, not cwd:
@@ -278,20 +276,20 @@ The project uses a **Jenkins Multibranch Pipeline** (`Jenkinsfile`) that runs in
 ### Quality Gates
 
 All stages must pass for build to succeed:
-- **Code formatting**: Black (line-length: 100)
-- **Linting**: Ruff (0 critical errors allowed)
+- **Code formatting**: Ruff format (line-length: 100)
+- **Linting**: Ruff check (0 critical errors allowed)
 - **Type checking**: mypy (strict mode)
 - **Testing**: pytest with 80% minimum coverage requirement
-- **Security**: pip-audit (no critical/high vulnerabilities)
+- **Security**: Semgrep SAST + pip-audit (no critical/high vulnerabilities)
 - **SBOM**: CycloneDX SBOM generation and upload to Dependency-Track
 - **SonarCloud**: Code quality analysis with quality gate enforcement
 
 ### Pipeline Stages
 
-1. **Setup Environment** - Install Python 3.11, uv, and system dependencies
+1. **Setup Environment** - Install Python 3.12, uv, and system dependencies
 2. **Install Dependencies** - Use uv to install project and dev dependencies
-3. **Code Quality Checks** - Black, Ruff, mypy (all must pass)
-4. **Security Scan** - pip-audit for vulnerability detection
+3. **Code Quality Checks** - Ruff format/lint, mypy (all must pass)
+4. **Security Scan** - Semgrep SAST + pip-audit for vulnerabilities
 5. **Run Tests** - pytest with coverage reporting (XML for SonarCloud)
 6. **Generate SBOM** - CycloneDX BOM file creation
 7. **Upload to Dependency-Track** - SBOM upload for dependency monitoring
@@ -330,7 +328,7 @@ console = mcp__plugin_jenkins-ci_jenkins__jenkins_get_build_console({
 
 ```bash
 # Full quality check sequence (same as Jenkins)
-black src tests && \
+ruff format --check src tests && \
 ruff check src tests && \
 mypy src && \
 pytest --cov=n8n_mcp --cov-report=xml --cov-report=term-missing
