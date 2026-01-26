@@ -3,8 +3,8 @@
  * n8n-mcp-server - Jenkins CI/CD Pipeline
  *
  * This pipeline provides comprehensive CI/CD with enforced quality standards:
- * - Code quality checks (Black, Ruff, mypy) with quality gates
- * - Security scanning (pip-audit) with severity thresholds
+ * - Code quality checks (Ruff format/lint, mypy) with quality gates
+ * - Security scanning (pip-audit, Bandit, Semgrep, Trivy) with severity thresholds
  * - Unit testing with coverage thresholds
  * - SonarCloud analysis with quality gate enforcement
  * - Dependency-Track SBOM upload
@@ -17,7 +17,7 @@
  *
  * Requirements:
  * - Jenkins with Pipeline plugin
- * - Python 3.11+ installed on agents
+ * - Python 3.12+ installed on agents
  * - uv (Python package manager) - auto-installed if not present
  * - Credentials: sonarcloud-token (for SonarCloud)
  * - Credentials: dependency-track (for SBOM upload)
@@ -40,7 +40,7 @@ pipeline {
     }
 
     environment {
-        PYTHON_VERSION = '3.11'
+        PYTHON_VERSION = '3.12'
         PYTHONDONTWRITEBYTECODE = '1'
         PYTHONUNBUFFERED = '1'
         UV_NO_CACHE = '1'
@@ -58,8 +58,6 @@ pipeline {
         COVERAGE_THRESHOLD = '80'
         // Maximum allowed lint errors per tool (0 = strict)
         MAX_RUFF_ERRORS = '0'
-        MAX_FLAKE8_ERRORS = '0'
-        MAX_PYLINT_ERRORS = '0'
         MAX_MYPY_ERRORS = '0'
         // Bandit uses tiered severity: HIGH=fail, MEDIUM=warn, LOW=pass
         // Block on critical/high security vulnerabilities (pip-audit)
@@ -190,52 +188,29 @@ pipeline {
 
         stage('Code Quality') {
             parallel {
-                stage('Format - Black') {
+                stage('Format & Lint - Ruff') {
                     steps {
                         script {
-                            def blackResult = sh(
+                            def ruffResult = sh(
                                 script: '''
-                                    echo "=== Checking Code Formatting with Black ==="
-                                    # Generate diff output for SonarCloud and archiving
-                                    /root/.local/bin/uv run black --check --diff ${SOURCE_DIR}/ tests/ > black-report.txt 2>&1
-                                    BLACK_EXIT=$?
+                                    echo "=== Checking Code Formatting with Ruff ==="
+                                    /root/.local/bin/uv run ruff format --check --diff ${SOURCE_DIR}/ tests/ > ruff-format-report.txt 2>&1
+                                    FORMAT_EXIT=$?
 
-                                    # Show output for visibility
-                                    cat black-report.txt
+                                    cat ruff-format-report.txt
 
-                                    if [ $BLACK_EXIT -ne 0 ]; then
+                                    if [ $FORMAT_EXIT -ne 0 ]; then
                                         echo ""
                                         echo "QUALITY GATE FAILURE: Code formatting issues found."
-                                        echo "Run 'black ${SOURCE_DIR}/ tests/' to fix."
+                                        echo "Run 'ruff format ${SOURCE_DIR}/ tests/' to fix."
                                         exit 1
                                     fi
 
                                     echo "QUALITY GATE PASSED: Code formatting OK"
-                                    exit 0
-                                ''',
-                                returnStatus: true
-                            )
+                                    echo ""
 
-                            if (blackResult != 0 && params.ENFORCE_QUALITY_GATES) {
-                                unstable("Black formatting check failed - marking as unstable for SonarCloud report upload")
-                            }
-                        }
-                    }
-                    post {
-                        always {
-                            archiveArtifacts artifacts: 'black-report.txt', allowEmptyArchive: true
-                        }
-                    }
-                }
-
-                stage('Lint - Ruff') {
-                    steps {
-                        script {
-                            def lintResult = sh(
-                                script: '''
                                     echo "=== Running Ruff Linter ==="
-                                    /root/.local/bin/uv run ruff check ${SOURCE_DIR}/ tests/ --output-format=json > ruff-report.json 2>&1
-                                    RUFF_EXIT=$?
+                                    /root/.local/bin/uv run ruff check ${SOURCE_DIR}/ tests/ --output-format=json > ruff-report.json 2>&1 || true
 
                                     # Count errors using jq for reliable JSON parsing
                                     if [ -f ruff-report.json ] && [ -s ruff-report.json ]; then
@@ -247,7 +222,7 @@ pipeline {
                                     echo "Ruff errors found: ${ERROR_COUNT}"
                                     echo "Maximum allowed: ${MAX_RUFF_ERRORS}"
 
-                                    # Show errors for visibility (|| true because we check ERROR_COUNT below)
+                                    # Show errors for visibility
                                     /root/.local/bin/uv run ruff check ${SOURCE_DIR}/ tests/ || true
 
                                     # Check against threshold
@@ -256,20 +231,20 @@ pipeline {
                                         exit 1
                                     fi
 
-                                    echo "QUALITY GATE PASSED: Ruff errors within threshold"
+                                    echo "QUALITY GATE PASSED: Ruff lint errors within threshold"
                                     exit 0
                                 ''',
                                 returnStatus: true
                             )
 
-                            if (lintResult != 0 && params.ENFORCE_QUALITY_GATES) {
+                            if (ruffResult != 0 && params.ENFORCE_QUALITY_GATES) {
                                 unstable("Ruff quality gate failed - marking as unstable for SonarCloud report upload")
                             }
                         }
                     }
                     post {
                         always {
-                            archiveArtifacts artifacts: 'ruff-report.json', allowEmptyArchive: true
+                            archiveArtifacts artifacts: 'ruff-format-report.txt,ruff-report.json', allowEmptyArchive: true
                         }
                     }
                 }
@@ -317,122 +292,6 @@ pipeline {
                     post {
                         always {
                             archiveArtifacts artifacts: 'mypy-report.xml,mypy-output.txt', allowEmptyArchive: true
-                        }
-                    }
-                }
-
-                stage('Lint - Pylint') {
-                    steps {
-                        script {
-                            def pylintResult = sh(
-                                script: '''
-                                    echo "=== Running Pylint ==="
-                                    # Run pylint and show output in console
-                                    /root/.local/bin/uv run pylint ${SOURCE_DIR}/ \
-                                        --max-line-length=100 \
-                                        --exit-zero 2>&1 | tee pylint-console.txt || true
-
-                                    # Generate parseable report for SonarCloud (required format per docs)
-                                    /root/.local/bin/uv run pylint ${SOURCE_DIR}/ \
-                                        --max-line-length=100 \
-                                        --output-format=parseable \
-                                        --msg-template="{path}:{line}: [{msg_id}({symbol}), {obj}] {msg}" \
-                                        --exit-zero \
-                                        > pylint-report.txt 2>&1
-
-                                    # Also generate JSON for internal counting
-                                    /root/.local/bin/uv run pylint ${SOURCE_DIR}/ \
-                                        --max-line-length=100 \
-                                        --output-format=json \
-                                        --exit-zero \
-                                        > pylint-report.json 2>&1
-
-                                    # Count issues from JSON report using jq
-                                    if [ -f pylint-report.json ] && [ -s pylint-report.json ]; then
-                                        ERROR_COUNT=$(jq 'length' pylint-report.json 2>/dev/null || echo "0")
-                                    else
-                                        ERROR_COUNT=0
-                                    fi
-
-                                    echo ""
-                                    echo "Pylint issues found: ${ERROR_COUNT}"
-                                    echo "Maximum allowed: ${MAX_PYLINT_ERRORS}"
-
-                                    # Check against threshold
-                                    if [ "${ERROR_COUNT}" -gt "${MAX_PYLINT_ERRORS}" ]; then
-                                        echo ""
-                                        echo "========================================"
-                                        echo "WARNING: Too many Pylint issues (${ERROR_COUNT} > ${MAX_PYLINT_ERRORS})"
-                                        echo "========================================"
-                                        exit 1
-                                    fi
-
-                                    echo "QUALITY GATE PASSED: Pylint issues within threshold"
-                                    exit 0
-                                ''',
-                                returnStatus: true
-                            )
-
-                            if (pylintResult != 0) {
-                                unstable("WARNING: Pylint quality gate failed - see output above for details")
-                            }
-                        }
-                    }
-                    post {
-                        always {
-                            archiveArtifacts artifacts: 'pylint-report.txt,pylint-report.json', allowEmptyArchive: true
-                        }
-                    }
-                }
-
-                stage('Lint - Flake8') {
-                    steps {
-                        script {
-                            def flake8Result = sh(
-                                script: '''
-                                    echo "=== Running Flake8 ==="
-                                    # Generate report for SonarCloud (format: file:line:column: code message)
-                                    # Uses max-line-length=100 for n8n-mcp-server
-                                    /root/.local/bin/uv run flake8 ${SOURCE_DIR}/ tests/ \
-                                        --max-line-length=100 \
-                                        --output-file=flake8-report.txt \
-                                        --tee \
-                                        --exit-zero
-
-                                    # Count issues from report file (each line is an issue)
-                                    if [ -f flake8-report.txt ] && [ -s flake8-report.txt ]; then
-                                        ERROR_COUNT=$(wc -l < flake8-report.txt | tr -d ' ')
-                                    else
-                                        ERROR_COUNT=0
-                                    fi
-
-                                    echo ""
-                                    echo "Flake8 issues found: ${ERROR_COUNT}"
-                                    echo "Maximum allowed: ${MAX_FLAKE8_ERRORS}"
-
-                                    # Check against threshold
-                                    if [ "${ERROR_COUNT}" -gt "${MAX_FLAKE8_ERRORS}" ]; then
-                                        echo ""
-                                        echo "========================================"
-                                        echo "WARNING: Too many Flake8 issues (${ERROR_COUNT} > ${MAX_FLAKE8_ERRORS})"
-                                        echo "========================================"
-                                        exit 1
-                                    fi
-
-                                    echo "QUALITY GATE PASSED: Flake8 issues within threshold"
-                                    exit 0
-                                ''',
-                                returnStatus: true
-                            )
-
-                            if (flake8Result != 0) {
-                                unstable("WARNING: Flake8 quality gate failed - see output above for details")
-                            }
-                        }
-                    }
-                    post {
-                        always {
-                            archiveArtifacts artifacts: 'flake8-report.txt', allowEmptyArchive: true
                         }
                     }
                 }
@@ -626,6 +485,77 @@ pipeline {
                         }
                     }
                 }
+
+                stage('Semgrep') {
+                    steps {
+                        script {
+                            def semgrepResult = sh(
+                                script: '''
+                                    echo "=== Installing and Running Semgrep (SAST) ==="
+                                    pip3 install --quiet semgrep
+
+                                    # Run Semgrep with Python security rules
+                                    semgrep scan \
+                                        --config=auto \
+                                        --config=p/python \
+                                        --config=p/security-audit \
+                                        --json \
+                                        --output=semgrep-report.json \
+                                        ${SOURCE_DIR}/ 2>&1 || true
+
+                                    # Count findings by severity
+                                    if [ -f semgrep-report.json ] && [ -s semgrep-report.json ]; then
+                                        ERROR_COUNT=$(jq '[.results[] | select(.extra.severity == "ERROR")] | length' semgrep-report.json 2>/dev/null || echo "0")
+                                        WARNING_COUNT=$(jq '[.results[] | select(.extra.severity == "WARNING")] | length' semgrep-report.json 2>/dev/null || echo "0")
+                                        INFO_COUNT=$(jq '[.results[] | select(.extra.severity == "INFO")] | length' semgrep-report.json 2>/dev/null || echo "0")
+                                        TOTAL_COUNT=$(jq '.results | length' semgrep-report.json 2>/dev/null || echo "0")
+                                    else
+                                        ERROR_COUNT=0
+                                        WARNING_COUNT=0
+                                        INFO_COUNT=0
+                                        TOTAL_COUNT=0
+                                    fi
+
+                                    echo ""
+                                    echo "=== Semgrep SAST Results ==="
+                                    echo "Error severity:   ${ERROR_COUNT}"
+                                    echo "Warning severity: ${WARNING_COUNT}"
+                                    echo "Info severity:    ${INFO_COUNT}"
+                                    echo "Total findings:   ${TOTAL_COUNT}"
+
+                                    # Show human-readable output
+                                    semgrep scan \
+                                        --config=auto \
+                                        --config=p/python \
+                                        --config=p/security-audit \
+                                        ${SOURCE_DIR}/ 2>&1 || true
+
+                                    # Quality gate: fail on ERROR severity findings
+                                    if [ "${ERROR_COUNT}" -gt 0 ]; then
+                                        echo ""
+                                        echo "========================================"
+                                        echo "QUALITY GATE FAILURE: ${ERROR_COUNT} ERROR severity finding(s)"
+                                        echo "========================================"
+                                        exit 1
+                                    fi
+
+                                    echo "QUALITY GATE PASSED: No ERROR severity findings"
+                                    exit 0
+                                ''',
+                                returnStatus: true
+                            )
+
+                            if (semgrepResult != 0 && params.ENFORCE_QUALITY_GATES) {
+                                unstable("Semgrep SAST found ERROR severity issues - review recommended")
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'semgrep-report.json', allowEmptyArchive: true
+                        }
+                    }
+                }
             }
         }
 
@@ -776,13 +706,11 @@ except Exception as e:
                             -Dsonar.projectName="${PROJECT_NAME}" \
                             -Dsonar.sources=${SOURCE_DIR} \
                             -Dsonar.tests=tests \
-                            -Dsonar.python.version=3.11 \
+                            -Dsonar.python.version=3.12 \
                             -Dsonar.python.coverage.reportPaths=coverage.xml \
                             -Dsonar.python.ruff.reportPaths=ruff-report.json \
                             -Dsonar.python.mypy.reportPaths=mypy-output.txt \
-                            -Dsonar.python.pylint.reportPaths=pylint-report.txt \
-                            -Dsonar.python.bandit.reportPaths=bandit-report.json \
-                            -Dsonar.python.flake8.reportPaths=flake8-report.txt
+                            -Dsonar.python.bandit.reportPaths=bandit-report.json
 
                         echo "SonarCloud analysis complete"
                         echo "View at: https://sonarcloud.io/project/overview?id=${SONAR_PROJECT_KEY}"
@@ -989,6 +917,37 @@ except:
                 }
             }
         }
+
+        stage('Upload to Dependency-Track') {
+            when {
+                expression { params.UPLOAD_SBOM }
+            }
+            steps {
+                script {
+                    echo "=== Uploading SBOM to Dependency-Track ==="
+                    def projectVersion = readFile('.project_version').trim()
+                    echo "Project version: ${projectVersion}"
+
+                    withCredentials([string(credentialsId: 'dependency-track', variable: 'DTRACK_KEY')]) {
+                        dependencyTrackPublisher(
+                            artifact: 'sbom.json',
+                            projectId: 'b8cc347f-77d9-4ce2-b138-fbe6aba6ee9e',
+                            projectVersion: projectVersion,
+                            dependencyTrackApiKey: DTRACK_KEY,
+                            synchronous: true,
+                            projectProperties: [
+                                isLatest: true
+                            ],
+                            failOnViolationFail: true,
+                            failedNewCritical: 0,
+                            failedNewHigh: 0,
+                            failedTotalCritical: 0,
+                            failedTotalHigh: 0
+                        )
+                    }
+                }
+            }
+        }
     }
 
     post {
@@ -1002,8 +961,6 @@ except:
 Quality Gates Enforced: ${params.ENFORCE_QUALITY_GATES}
 Coverage Threshold: ${env.COVERAGE_THRESHOLD}%
 Max Ruff Errors: ${env.MAX_RUFF_ERRORS}
-Max Flake8 Errors: ${env.MAX_FLAKE8_ERRORS}
-Max Pylint Errors: ${env.MAX_PYLINT_ERRORS}
 Max mypy Errors: ${env.MAX_MYPY_ERRORS}
 Block on Critical Vulns: ${env.BLOCK_ON_CRITICAL_VULNS}
 Block on High Vulns: ${env.BLOCK_ON_HIGH_VULNS}
@@ -1049,11 +1006,11 @@ Block on High Vulns: ${env.BLOCK_ON_HIGH_VULNS}
             script {
                 echo "One or more quality gates failed. Review logs at: ${env.BUILD_URL}"
                 echo "Check the following:"
-                echo "  - Code formatting (Black)"
-                echo "  - Lint errors (Ruff, Flake8, Pylint)"
+                echo "  - Code formatting (Ruff)"
+                echo "  - Lint errors (Ruff)"
                 echo "  - Type errors (mypy)"
-                echo "  - Security issues (Bandit)"
-                echo "  - Dependency vulnerabilities (pip-audit)"
+                echo "  - Security issues (Bandit, Semgrep)"
+                echo "  - Dependency vulnerabilities (pip-audit, Trivy)"
                 echo "  - Test failures/coverage (pytest)"
                 echo "  - SonarCloud quality gate"
             }
