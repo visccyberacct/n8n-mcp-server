@@ -301,7 +301,7 @@ echo "Validating deployment..."
 
 [ -f "$MARKETPLACE/.claude-plugin/plugin.json" ] && echo "plugin.json exists" || echo "plugin.json MISSING"
 [ -f "$MARKETPLACE/.mcp.json" ] && echo ".mcp.json exists" || echo ".mcp.json MISSING"
-[ -f "$MARKETPLACE/src/n8n_mcp/mcp/server.py" ] && echo "server.py exists" || echo "server.py MISSING"
+[ -f "$MARKETPLACE/src/n8n_mcp/server.py" ] && echo "server.py exists" || echo "server.py MISSING"
 [ -f "$MARKETPLACE/pyproject.toml" ] && echo "pyproject.toml exists" || echo "pyproject.toml MISSING"
 [ -d "$MARKETPLACE/config" ] && echo "config/ exists" || echo "config/ MISSING"
 

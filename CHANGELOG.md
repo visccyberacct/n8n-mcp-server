@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+## [0.7.0b1] - 2026-01-26
+
+### Changed
+- **Python 3.12**: Upgraded from Python 3.11 to 3.12
+- **Ruff-only linting**: Consolidated Black, Pylint, Flake8 into unified Ruff tool
+- **Documentation**: Updated CLAUDE.md and README.md for new tooling
+
+### Added
+- **Semgrep SAST**: Added security static analysis scanning to CI pipeline
+- **Dependency-Track**: SBOM upload integration for dependency vulnerability monitoring
+
+### Security
+- Enhanced CI pipeline with Semgrep security scanning
+
 ## [0.6.5] - 2025-01-25
 
 ### Added
