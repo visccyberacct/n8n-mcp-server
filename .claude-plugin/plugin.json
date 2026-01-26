@@ -1,0 +1,14 @@
+{
+  "name": "n8n-api",
+  "version": "0.6.5",
+  "description": "n8n workflow automation platform integration with full workflow CRUD, execution, and monitoring",
+  "author": {
+    "name": "Kent Viscount",
+    "email": "visccyberacct@gmail.com"
+  },
+  "homepage": "https://github.com/visccyberacct/n8n-mcp-server",
+  "repository": "https://github.com/visccyberacct/n8n-mcp-server",
+  "license": "MIT",
+  "keywords": ["n8n", "workflow", "automation", "mcp", "api"],
+  "mcpServers": "./config/mcp.json"
+}
